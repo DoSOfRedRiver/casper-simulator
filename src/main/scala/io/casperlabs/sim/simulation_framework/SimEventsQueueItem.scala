@@ -1,5 +1,11 @@
 package io.casperlabs.sim.simulation_framework
 
+/**
+  * Base class of messages that can be queued in the main events queue.
+  *
+  * @tparam MsgPayload
+  * @tparam ExtEventPayload
+  */
 sealed trait SimEventsQueueItem[MsgPayload,ExtEventPayload] {
   val id: Long
   val scheduledTime: Timepoint

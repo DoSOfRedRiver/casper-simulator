@@ -1,4 +1,6 @@
-package io.casperlabs.sim.blockchain_models.casperlabs
+package io.casperlabs.sim.blockchain_models.casperlabs_classic
+
+import io.casperlabs.sim.blockchain_components.execution_engine.Transaction
 
 import scala.collection.immutable.HashMap
 import scala.collection.mutable

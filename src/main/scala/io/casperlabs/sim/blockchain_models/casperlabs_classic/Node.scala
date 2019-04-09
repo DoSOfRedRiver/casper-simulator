@@ -1,10 +1,11 @@
-package io.casperlabs.sim.blockchain_models.casperlabs
+package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
+import io.casperlabs.sim.blockchain_components.execution_engine.Account
 import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem, SimulationContext}
 
 class Node(account: Account, context: SimulationContext) extends Agent(context) {
   //block -> collection of missing justifications; once this collection goes down to empty, we are ready to include the block in the node view of the blockdag
-  private val receivedBlocksBuffer: BlocksMultimap = ???
+  private val receivedBlocksBuffer: Set[Block] = ???
 
   override def id: AgentId = ???
 
