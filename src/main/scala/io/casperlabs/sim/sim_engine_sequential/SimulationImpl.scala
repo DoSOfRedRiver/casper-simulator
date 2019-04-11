@@ -19,10 +19,15 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
   private var lastEventId: Long = 0L
   private var clock: Timepoint = Timepoint(0L)
 
+  override def currentTime(): Timepoint = clock
+
   override def registerAgent(agent: Agent[MsgPayload, ExtEventPayload]): Unit = {
     lastUsedAgentId += 1
     agentsRegistry += (lastUsedAgentId -> agent)
   }
+
+  override def registerCommunication(event: AgentToAgentMsg[MsgPayload, ExtEventPayload]): Unit =
+    queue.enqueue(event)
 
   override def start(): Unit = {
     while (clock <= simulationEnd) {

@@ -6,6 +6,8 @@ package io.casperlabs.sim.simulation_framework
   * The simulation runs in virtualised time.
   */
 trait Simulation[MsgPayload, ExtEventPayload] {
+  def currentTime(): Timepoint
   def registerAgent(agent: Agent[MsgPayload, ExtEventPayload]): Unit
+  def registerCommunication(event: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload]): Unit
   def start(): Unit
 }

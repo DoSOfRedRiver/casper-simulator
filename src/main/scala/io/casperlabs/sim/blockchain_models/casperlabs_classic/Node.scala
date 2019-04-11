@@ -1,7 +1,7 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
+import io.casperlabs.sim.blockchain_components.{Discovery, Gossip}
 import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Transaction}
-import io.casperlabs.sim.blockchain_components.hashing.HashValue
 import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem, SimulationContext}
 
 import scala.collection.mutable
@@ -9,8 +9,9 @@ import scala.collection.mutable
 class Node(
   override val id: AgentId, 
   account: Account, 
-  context: SimulationContext, 
-  peers: List[AgentId]
+  context: SimulationContext,
+  d: Discovery[AgentId, AgentId],
+  g: Gossip[AgentId, AgentId, Node.Comm]
 ) extends Agent[Node.Comm, Node.Operation](context) {
   private val deployBuffer: mutable.HashSet[Node.Operation.Deploy] = mutable.HashSet.empty
   private val addedBlocks: mutable.HashSet[Block] = mutable.HashSet.empty
@@ -35,9 +36,9 @@ class Node(
 
         case Node.AddBlockResult.Valid =>
           // Block is valid, gossip to others.
-          // TODO: abtract out gossiping protocol?
+          g.gossip(n)
           // TODO: Should this somehow expend time?
-          Agent.MsgHandlingResult(peers.map(id => (id, n)), 0L)
+          Agent.MsgHandlingResult(Nil, 0L)
       }
   }
 

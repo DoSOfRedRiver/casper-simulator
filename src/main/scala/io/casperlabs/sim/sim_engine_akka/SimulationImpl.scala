@@ -2,7 +2,7 @@ package io.casperlabs.sim.sim_engine_akka
 
 import akka.actor.ActorSystem
 import com.typesafe.config.ConfigFactory
-import io.casperlabs.sim.simulation_framework.{Agent, Simulation}
+import io.casperlabs.sim.simulation_framework.{Agent, SimEventsQueueItem, Simulation, Timepoint}
 
 /**
   * Simulation engine impl based on akka.
@@ -10,6 +10,10 @@ import io.casperlabs.sim.simulation_framework.{Agent, Simulation}
   */
 class SimulationImpl[MsgPayload, ExtEventPayload] extends Simulation[MsgPayload, ExtEventPayload] {
   private val actorSystem = ActorSystem("sim", ConfigFactory.load("sim"))
+
+  override def currentTime(): Timepoint = ???
+
+  override def registerCommunication(event: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload]): Unit = ???
 
   override def registerAgent(agent: Agent[MsgPayload, ExtEventPayload]): Unit = ???
 
