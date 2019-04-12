@@ -51,7 +51,7 @@ object Gossip {
             delay <- n.calculateUnicastDelay(msg, d.self, peer, sentTime)
             arrivalTime = sentTime + delay
           } yield AgentToAgentMsg[MsgPayload, ExtEventPayload](
-            ???, // TODO: id generator?
+            s.nextId(),
             d.self,
             peer,
             sentTime,

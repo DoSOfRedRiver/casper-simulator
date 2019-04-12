@@ -10,6 +10,9 @@ import io.casperlabs.sim.simulation_framework.{Agent, SimEventsQueueItem, Simula
   */
 class SimulationImpl[MsgPayload, ExtEventPayload] extends Simulation[MsgPayload, ExtEventPayload] {
   private val actorSystem = ActorSystem("sim", ConfigFactory.load("sim"))
+  private val idGenerator = Iterator.iterate(0L)(_ + 1L)
+
+  override def nextId(): Long = idGenerator.next()
 
   override def currentTime(): Timepoint = ???
 

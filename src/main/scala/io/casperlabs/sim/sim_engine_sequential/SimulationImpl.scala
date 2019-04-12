@@ -18,6 +18,9 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
   private var lastUsedAgentId: Int = 0
   private var lastEventId: Long = 0L
   private var clock: Timepoint = Timepoint(0L)
+  private val idGenerator = Iterator.iterate(0L)(_ + 1L)
+
+  override def nextId(): Long = idGenerator.next()
 
   override def currentTime(): Timepoint = clock
 
