@@ -5,9 +5,8 @@ import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
 /**
   * Represents a participant of the simulated network.
   *
-  * @param context simulation engine API as seen by the agent
   */
-abstract class Agent[MsgPayload, ExtEventPayload](context: SimulationContext) {
+trait Agent[MsgPayload, ExtEventPayload] {
 
   def id: AgentId
 

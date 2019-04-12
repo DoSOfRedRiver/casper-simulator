@@ -2,17 +2,16 @@ package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
 import io.casperlabs.sim.blockchain_components.{Discovery, Gossip}
 import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Transaction}
-import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem, SimulationContext}
+import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem}
 
 import scala.collection.mutable
 
 class Node(
   override val id: AgentId, 
-  account: Account, 
-  context: SimulationContext,
+  account: Account,
   d: Discovery[AgentId, AgentId],
   g: Gossip[AgentId, AgentId, Node.Comm]
-) extends Agent[Node.Comm, Node.Operation](context) {
+) extends Agent[Node.Comm, Node.Operation] {
   private val deployBuffer: mutable.HashSet[Node.Operation.Deploy] = mutable.HashSet.empty
   private val addedBlocks: mutable.HashSet[Block] = mutable.HashSet.empty
   private val blockBuffer: mutable.HashSet[Block] = mutable.HashSet.empty
