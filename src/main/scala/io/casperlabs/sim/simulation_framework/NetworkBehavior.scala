@@ -20,27 +20,6 @@ trait NetworkBehavior[MsgPayload] {
   def calculateUnicastDelay(msg: MsgPayload, sender: AgentId, destination: AgentId, sendingTime: Timepoint): Option[TimeDelta]
 
   /**
-    * Tells the relative delivery delay that should be simulated for the specified agent-to-agent message.
-    * This method is used to determine delivery delay for broadcasting.
-    *
-    * In an ideal network we expect the message to be delivered to every agent participating in the sim.
-    * To be more precise - the set of agents is dynamic (new agents can show up as the simulation goes)
-    * and it is up to the implementation to decide on the subset of agents collection that should actually
-    * receive the message. Also the delivery delays can be decided per-destination-agent.
-    *
-    * Returned map encodes both the subset of agents that will receive the message and the individual delays.
-    * For example: Map(243 -> 33, 3 -> 100, 24 -> 1500) means that:
-    * (1) the message should be delivered to agents 243, 3 and 24 only
-    * (2) delivery time in the case of agent 234 should be 33 + networkLatencyLowerBound.
-    *
-    * @param msg message under consideration
-    * @param sender agent sending the message
-    * @param sendingTime timepoint when the message was sent
-    * @return map: destination agent ----> delta
-    */
-  def calculateBroadcastDelay(msg: MsgPayload, sender: AgentId, sendingTime: Timepoint): Map[AgentId, TimeDelta]
-
-  /**
     * Minimal amount of time that a delivery of agent-to-agent message can take.
     * The simulator actually uses this information to run the simulation concurrently without any sophisticated
     * Parallel-DES algorithms (like Time Warp for example).
@@ -50,4 +29,43 @@ trait NetworkBehavior[MsgPayload] {
     */
   def networkLatencyLowerBound: TimeDelta
 
+}
+
+object NetworkBehavior {
+  /**
+    * A simple Network behaviour in which the delay is sample uniformly from
+    * [minDelay, maxDelay) and there is a constant probability of the message
+    * being dropped.
+    * @param minDelay minimum network delay
+    * @param maxDelay maxmum network delay
+    * @param dropRate number between 0 and 1 inclusive representing the probability
+    *                 of a message being dropped
+    * @tparam MsgPayload Type of messages to send
+    * @return a simple network behaviour implementation as described above.
+    */
+  def uniform[MsgPayload](
+                           minDelay: TimeDelta,
+                           maxDelay: TimeDelta,
+                           dropRate: Double
+                         ): NetworkBehavior[MsgPayload] =
+    new NetworkBehavior[MsgPayload] {
+      private val rng = new scala.util.Random
+      private val delayDelta = (maxDelay - minDelay).toInt
+
+      override def calculateUnicastDelay(
+                                          msg: MsgPayload,
+                                          sender: AgentId,
+                                          destination: AgentId,
+                                          sendingTime: Timepoint
+                                        ): Option[TimeDelta] = {
+        val dropped = rng.nextDouble() < dropRate
+        if (dropped) None
+        else {
+          val delay = rng.nextInt(delayDelta) + minDelay
+          Some(delay)
+        }
+      }
+
+      override def networkLatencyLowerBound: TimeDelta = minDelay
+  }
 }
