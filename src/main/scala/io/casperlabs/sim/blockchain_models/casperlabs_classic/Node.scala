@@ -1,6 +1,6 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.blockchain_components.{Discovery, Gossip}
+import io.casperlabs.sim.blockchain_components.{Discovery, DoublyLinkedDag, Gossip}
 import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Transaction}
 import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem}
 
@@ -10,11 +10,14 @@ class Node(
   override val id: AgentId, 
   account: Account,
   d: Discovery[AgentId, AgentId],
-  g: Gossip[AgentId, AgentId, Node.Comm]
+  g: Gossip[AgentId, AgentId, Node.Comm],
+  genesis: Block
 ) extends Agent[Node.Comm, Node.Operation] {
   private val deployBuffer: mutable.HashSet[Node.Operation.Deploy] = mutable.HashSet.empty
-  private val addedBlocks: mutable.HashSet[Block] = mutable.HashSet.empty
   private val blockBuffer: mutable.HashSet[Block] = mutable.HashSet.empty
+  // TODO: share DAG structure among nodes
+  private val pDag: DoublyLinkedDag[Block] = DoublyLinkedDag.pBlockDag(genesis)
+  private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesis)
 
   override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[Node.Comm, Node.Operation]): Agent.MsgHandlingResult[Node.Comm] = msg.payload match {
     case n @ Node.Comm.NewBlock(b) => 
@@ -52,23 +55,30 @@ class Node(
 
   override def startup(): Unit = ???
 
-  def addBlock(b: Block): Node.AddBlockResult = 
-    if (addedBlocks.contains(b)) Node.AddBlockResult.AlreadyAdded
-    else {
-      // We assume that parents are a sub-set of justifications and 
-      // therefore only check the justifications.
-      // TODO: Confirm this assumption and call block invalid otherwise
-      val missingJustifications = b.justifications.filterNot(addedBlocks.contains)
-
-      if (missingJustifications.isEmpty) {
+  def addBlock(b: Block): Node.AddBlockResult =
+    (pDag.insert(b, b.parents), jDag.insert(b, b.justifications)) match {
+      case (
+        DoublyLinkedDag.InsertResult.Success(pInsert),
+        DoublyLinkedDag.InsertResult.Success(jInsert),
+        ) =>
         // TODO: Other validity checks
-        // TODO: handle block buffer?
-        addedBlocks += b
+        // TODO: handle block buffer
+        pInsert()
+        jInsert()
         Node.AddBlockResult.Valid
-      } else {
+
+      case (_, DoublyLinkedDag.InsertResult.MissingTargets(jMissing)) =>
+        // We assume that parents are a sub-set of justifications and
+        // therefore only check the justifications.
+        // TODO: Confirm this assumption and call block invalid otherwise
         blockBuffer += b
-        Node.AddBlockResult.MissingJustifications(missingJustifications)
-      }
+        Node.AddBlockResult.MissingJustifications(jMissing.toIndexedSeq)
+
+      case (_, DoublyLinkedDag.InsertResult.AlreadyInserted()) =>
+        Node.AddBlockResult.AlreadyAdded
+
+      case (_, DoublyLinkedDag.InsertResult.Success(_)) =>
+        throw new RuntimeException("Unreachable state")
     }
 }
 
