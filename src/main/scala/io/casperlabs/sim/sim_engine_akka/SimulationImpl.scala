@@ -2,7 +2,7 @@ package io.casperlabs.sim.sim_engine_akka
 
 import akka.actor.ActorSystem
 import com.typesafe.config.ConfigFactory
-import io.casperlabs.sim.simulation_framework.{Agent, SimEventsQueueItem, Simulation, Timepoint}
+import io.casperlabs.sim.simulation_framework.{Agent, AgentsCreationStream, ExternalEventsStream, SimEventsQueueItem, Simulation, Timepoint}
 
 /**
   * Simulation engine impl based on akka.
@@ -20,5 +20,5 @@ class SimulationImpl[MsgPayload, ExtEventPayload] extends Simulation[MsgPayload,
 
   override def registerAgent(agent: Agent[MsgPayload, ExtEventPayload]): Unit = ???
 
-  override def start(): Unit = ???
+  override def start(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload], agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload]): Unit = ???
 }

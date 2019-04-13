@@ -10,5 +10,8 @@ trait Simulation[MsgPayload, ExtEventPayload] {
   def currentTime(): Timepoint
   def registerAgent(agent: Agent[MsgPayload, ExtEventPayload]): Unit
   def registerCommunication(event: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload]): Unit
-  def start(): Unit
+  def start(
+             externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload],
+             agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload]
+           ): Unit
 }

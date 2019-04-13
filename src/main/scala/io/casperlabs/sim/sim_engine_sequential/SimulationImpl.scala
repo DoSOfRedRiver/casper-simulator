@@ -8,12 +8,10 @@ import scala.collection.mutable
 
 class SimulationImpl[MsgPayload, ExtEventPayload](
                                                simulationEnd: Timepoint,
-                                               externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload],
-                                               agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload],
                                                networkBehavior: NetworkBehavior[MsgPayload]
                                              ) extends Simulation[MsgPayload, ExtEventPayload] {
 
-  private val queue = new SimEventsQueue[MsgPayload, ExtEventPayload](externalEventsGenerator, agentsCreationStream)
+  private val queue = new SimEventsQueue[MsgPayload, ExtEventPayload]
   private val agentsRegistry = new mutable.HashMap[AgentId, Agent[MsgPayload, ExtEventPayload]]
   private var lastUsedAgentId: Int = 0
   private var lastEventId: Long = 0L
@@ -32,7 +30,12 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
   override def registerCommunication(event: AgentToAgentMsg[MsgPayload, ExtEventPayload]): Unit =
     queue.enqueue(event)
 
-  override def start(): Unit = {
+  override def start(
+                      externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload],
+                      agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload]
+                    ): Unit = {
+    queue.addCreationEvents(agentsCreationStream)
+    queue.addExternalEvents(externalEventsGenerator)
     while (clock <= simulationEnd) {
       val currentEventsQueueItem = queue.dequeue()
       clock = currentEventsQueueItem.scheduledTime
