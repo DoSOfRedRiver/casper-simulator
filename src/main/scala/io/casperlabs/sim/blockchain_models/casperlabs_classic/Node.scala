@@ -11,7 +11,6 @@ import scala.collection.mutable
 class Node(
   override val id: AgentId,
   stakes: Map[AgentId, Int], // TODO: have this information in block instead
-  account: Account,
   d: Discovery[AgentId, AgentId],
   g: Gossip[AgentId, AgentId, Node.Comm],
   genesis: Block
@@ -51,7 +50,10 @@ class Node(
     }
 
   override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[Node.Comm, Node.Operation]): Agent.MsgHandlingResult[Node.Comm] = event.payload match {
-    case d: Node.Operation.Deploy => 
+    case Node.Operation.NoOp =>
+      Agent.MsgHandlingResult(Nil, 0L) // Nothing to do here
+
+    case d: Node.Operation.Deploy =>
       deployBuffer += d // Add to deploy buffer
       Agent.MsgHandlingResult(Nil, 0L) // No new messages need to be sent
 
@@ -118,6 +120,12 @@ object Node {
   object Operation {
     case class Deploy(t: Transaction) extends Operation
     case object Propose extends Operation
+    // "Do nothing command", needed to allow infinite external events
+    case object NoOp extends Operation
+
+    def deploy(t: Transaction): Operation = Deploy(t)
+    def propose: Operation = Propose
+    def noOp: Operation = NoOp
   }
 
   sealed trait AddBlockResult
