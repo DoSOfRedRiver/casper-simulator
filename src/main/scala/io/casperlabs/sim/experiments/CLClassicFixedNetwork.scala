@@ -4,7 +4,7 @@ import io.casperlabs.sim.blockchain_components.{Discovery, Gossip}
 import io.casperlabs.sim.blockchain_models.casperlabs_classic.{Genesis, Node}
 import io.casperlabs.sim.sim_engine_sequential.SimulationImpl
 import io.casperlabs.sim.simulation_framework.SimEventsQueueItem.{ExternalEvent, NewAgentCreation}
-import io.casperlabs.sim.simulation_framework.{AgentsCreationStream, ExternalEventsStream, NetworkBehavior, Timepoint}
+import io.casperlabs.sim.simulation_framework.{Agent, AgentsCreationStream, ExternalEventsStream, NetworkBehavior, Timepoint}
 
 object CLClassicFixedNetwork {
   def main(args: Array[String]): Unit = {
@@ -33,13 +33,18 @@ object CLClassicFixedNetwork {
     })
 
     val creation = AgentsCreationStream.fromIterator(
-      agents.iterator.map(node => {
-        NewAgentCreation(
-          sim.nextId(),
-          node,
-          Timepoint(0L)
-        )
-      })
+      Iterator.from(0).map {
+        index =>
+          val agent: Agent[Node.Comm, Node.Operation] =
+            if (index < nNodes) agents(index)
+            else Agent.noOp(index)
+
+          NewAgentCreation(
+            sim.nextId(),
+            agent,
+            Timepoint(index)
+          )
+      }
     )
 
     val external = ExternalEventsStream.fromIterator(

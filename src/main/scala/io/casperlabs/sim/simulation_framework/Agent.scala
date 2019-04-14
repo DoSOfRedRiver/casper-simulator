@@ -20,4 +20,15 @@ trait Agent[MsgPayload, ExtEventPayload] {
 object Agent {
 
   case class MsgHandlingResult[MsgPayload](outgoingMessages: Iterable[(AgentId, MsgPayload)], consumedTime: TimeDelta)
+
+  def noOp[MsgPayload, ExtEventPayload](id: AgentId): Agent[MsgPayload, ExtEventPayload] =
+    NoOp(id)
+
+  case class NoOp[MsgPayload, ExtEventPayload](override val id: AgentId) extends Agent[MsgPayload, ExtEventPayload] {
+    override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[MsgPayload, ExtEventPayload]): MsgHandlingResult[MsgPayload] = MsgHandlingResult(Nil, 0L)
+
+    override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload]): MsgHandlingResult[MsgPayload] = MsgHandlingResult(Nil, 0L)
+
+    override def startup(): Unit = ()
+  }
 }
