@@ -21,44 +21,49 @@ class Node(
   private val pDag: DoublyLinkedDag[Block] = DoublyLinkedDag.pBlockDag(genesis)
   private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesis)
 
-  override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[Node.Comm, Node.Operation, Node.Propose.type]): Agent.MsgHandlingResult[Node.Comm] = msg.payload match {
+  override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[Node.Comm, Node.Operation, Node.Propose.type]): Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = msg.payload match {
     case Node.Comm.NewBlock(b) =>
       handleBlock(b)
   }
 
-  def handleBlock(b: Block): MsgHandlingResult[Node.Comm] =
+  def handleBlock(b: Block): MsgHandlingResult[Node.Comm, Node.Propose.type] =
     addBlock(b) match {
       case Node.AddBlockResult.AlreadyAdded =>
         // We got this block already, nothing to do
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
 
       case Node.AddBlockResult.MissingJustifications(_) =>
         // We can't add this block yet, nothing to send out at this time
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
 
       case Node.AddBlockResult.Invalid =>
         // Something is wrong with the block.
         // No new messages need to be sent.
         // TODO: slashing
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
 
       case Node.AddBlockResult.Valid =>
         // Block is valid, gossip to others.
         g.gossip(Node.Comm.NewBlock(b))
         // TODO: Should this somehow expend time?
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
     }
 
-  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[Node.Comm, Node.Operation, Node.Propose.type]): Agent.MsgHandlingResult[Node.Comm] = event.payload match {
+  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[Node.Comm, Node.Operation, Node.Propose.type]): Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = event.payload match {
     case Node.Operation.NoOp =>
-      Agent.MsgHandlingResult(Nil, 0L) // Nothing to do here
+      Agent.MsgHandlingResult.empty // Nothing to do here
 
     case d: Node.Operation.Deploy =>
       deployBuffer += d // Add to deploy buffer
-      Agent.MsgHandlingResult(Nil, 0L) // No new messages need to be sent
+      Agent.MsgHandlingResult.empty // No new messages need to be sent
   }
 
-  private[this] def doPropose: Agent.MsgHandlingResult[Node.Comm] = {
+  override def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent[Node.Comm, Node.Operation, Node.Propose.type]): MsgHandlingResult[Node.Comm, Node.Propose.type] = {
+    // TODO: apply block proposal strategy here
+    ???
+  }
+
+  private[this] def doPropose: Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = {
     // Propose a new block
     // TODO: check for equivocations?
     val latestMessages = jDag.tips.groupBy(_.creator).mapValues(_.head)

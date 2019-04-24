@@ -33,6 +33,11 @@ object SimEventsQueueItem {
                 agentInstance: Agent[MsgPayload,ExtEventPayload,PrivatePayload],
                 scheduledTime: Timepoint) extends SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]
 
+  case class PrivateEvent[MsgPayload,ExtEventPayload,PrivatePayload](
+                id: Long,
+                affectedAgent: AgentId,
+                scheduledTime: Timepoint,
+                payload: PrivatePayload) extends SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]
 }
 
 class QueueItemsOrdering[MsgPayload,ExtEventPayload,PrivatePayload] extends Ordering[SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]] {

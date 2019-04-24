@@ -30,6 +30,12 @@ class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload](
   override def registerCommunication(event: AgentToAgentMsg[MsgPayload, ExtEventPayload, PrivatePayload]): Unit =
     queue.enqueue(event)
 
+  private[this] def unsafeGetAgent(agentId: AgentId, event: SimEventsQueueItem[MsgPayload, ExtEventPayload, PrivatePayload]): Agent[MsgPayload, ExtEventPayload, PrivatePayload] =
+    agentsRegistry.get(agentId) match {
+      case Some(x) => x
+      case None => throw new RuntimeException(s"unknown agent id $agentId encountered when processing event: $event")
+    }
+
   override def start(
                       externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload],
                       agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]
@@ -42,29 +48,28 @@ class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload](
 
       currentEventsQueueItem match {
         case msg: AgentToAgentMsg[MsgPayload,ExtEventPayload, PrivatePayload] =>
-          val agent = agentsRegistry.get(msg.destination) match {
-            case Some(x) => x
-            case None => throw new RuntimeException(s"unknown agent id ${msg.destination} encountered as destination of message ${msg.id} sent from agent ${msg.source}")
-          }
-          val processingResult: MsgHandlingResult[MsgPayload] = agent.handleMsg(msg)
+          val agent = unsafeGetAgent(msg.destination, msg)
+          val processingResult: MsgHandlingResult[MsgPayload, PrivatePayload] = agent.handleMsg(msg)
           applyEventProcessingResultToSimState(msg.destination, processingResult)
 
         case ev: ExternalEvent[MsgPayload,ExtEventPayload, PrivatePayload] =>
-          val agent = agentsRegistry.get(ev.affectedAgent) match {
-            case Some(x) => x
-            case None => throw new RuntimeException(s"unknown agent id ${ev.affectedAgent} encountered as destination of external event ${ev.id}")
-          }
-          val processingResult: MsgHandlingResult[MsgPayload] = agent.handleExternalEvent(ev)
+          val agent = unsafeGetAgent(ev.affectedAgent, ev)
+          val processingResult: MsgHandlingResult[MsgPayload, PrivatePayload] = agent.handleExternalEvent(ev)
           applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
 
         case ev: NewAgentCreation[MsgPayload,ExtEventPayload,PrivatePayload] =>
           registerAgent(ev.agentInstance)
           ev.agentInstance.startup()
+
+        case ev: PrivateEvent[MsgPayload,ExtEventPayload,PrivatePayload] =>
+          val agent = unsafeGetAgent(ev.affectedAgent, ev)
+          val processingResult: MsgHandlingResult[MsgPayload, PrivatePayload] = agent.handlePrivateEvent(ev)
+          applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
       }
     }
   }
 
-  def applyEventProcessingResultToSimState(processingAgentId: AgentId, processingResult: MsgHandlingResult[MsgPayload]): Unit = {
+  def applyEventProcessingResultToSimState(processingAgentId: AgentId, processingResult: MsgHandlingResult[MsgPayload, PrivatePayload]): Unit = {
     val sendingTime = clock + processingResult.consumedTime
 
     for ((targetAgentId, payload) <- processingResult.outgoingMessages) {
@@ -85,6 +90,16 @@ class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload](
       }
     }
 
+    for((time, payload) <- processingResult.privateEvents) {
+      lastEventId += 1
+      val event = PrivateEvent[MsgPayload,ExtEventPayload,PrivatePayload](
+        lastEventId,
+        processingAgentId,
+        time,
+        payload
+      )
+      queue.enqueue(event)
+    }
   }
 
 //  private def findAgent(id: AgentId): Agent = agents.get(id) match {

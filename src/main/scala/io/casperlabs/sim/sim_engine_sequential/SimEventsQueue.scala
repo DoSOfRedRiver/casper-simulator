@@ -40,7 +40,7 @@ class SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload] {
     ensureAgentCreationsAreGeneratedUpTo(latestAgentMsgTimepoint)
   }
 
-  def enqueue(msg: AgentToAgentMsg[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
+  def enqueue(msg: SimEventsQueueItem[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
     queue.enqueue(msg)
     numberOfQueuedAgentMessages += 1
     if (msg.scheduledTime > latestAgentMsgTimepoint) {
