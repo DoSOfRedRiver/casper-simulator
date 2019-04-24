@@ -23,12 +23,15 @@ object CLClassicFixedNetwork {
       val others = nodeIds.filterNot(_ == local).toList
       val discovery = Discovery.fixedPool(local, others)
       val gossip = Gossip.naive(sim, discovery, network)
+      // TODO: different propose intervals?
+      val proposeStrategy = Node.intervalPropose(10L)
       new Node(
         id,
         stakes,
         discovery,
         gossip,
-        Genesis
+        Genesis,
+        proposeStrategy
       )
     })
 

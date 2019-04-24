@@ -4,7 +4,7 @@ import io.casperlabs.sim.blockchain_components.{Discovery, DoublyLinkedDag, Goss
 import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Transaction}
 import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
 import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
-import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem}
+import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem, TimeDelta, Timepoint}
 
 import scala.collection.mutable
 
@@ -13,13 +13,18 @@ class Node(
   stakes: Map[AgentId, Int], // TODO: have this information in block instead
   d: Discovery[AgentId, AgentId],
   g: Gossip[AgentId, AgentId, Node.Comm],
-  genesis: Block
+  genesis: Block,
+  proposeStrategy: Node.ProposeStrategy
 ) extends Agent[Node.Comm, Node.Operation, Node.Propose.type] {
   private val deployBuffer: mutable.HashSet[Node.Operation.Deploy] = mutable.HashSet.empty
   private val blockBuffer: mutable.HashSet[Block] = mutable.HashSet.empty
   // TODO: share DAG structure among nodes
   private val pDag: DoublyLinkedDag[Block] = DoublyLinkedDag.pBlockDag(genesis)
   private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesis)
+  // TODO: do this without a var
+  private var lastProposeTime: Timepoint = Timepoint(0L)
+
+  def getLastProposedTime: Timepoint = lastProposeTime
 
   override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[Node.Comm, Node.Operation, Node.Propose.type]): Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = msg.payload match {
     case Node.Comm.NewBlock(b) =>
@@ -58,9 +63,16 @@ class Node(
       Agent.MsgHandlingResult.empty // No new messages need to be sent
   }
 
-  override def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent[Node.Comm, Node.Operation, Node.Propose.type]): MsgHandlingResult[Node.Comm, Node.Propose.type] = {
-    // TODO: apply block proposal strategy here
-    ???
+  override def handlePrivateEvent(event: Node.ProposeEvent): MsgHandlingResult[Node.Comm, Node.Propose.type] = {
+    val (shouldPropose, nextEventTime) = proposeStrategy(this, event)
+    val Agent.MsgHandlingResult(out, proposals, time) =
+      if (shouldPropose) {
+        lastProposeTime = event.scheduledTime
+        doPropose
+      }
+      else MsgHandlingResult.empty
+
+    Agent.MsgHandlingResult(out, proposals ++ List(nextEventTime -> Node.Propose), time)
   }
 
   private[this] def doPropose: Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = {
@@ -117,6 +129,15 @@ class Node(
 }
 
 object Node {
+  type ProposeEvent = SimEventsQueueItem.PrivateEvent[Node.Comm, Node.Operation, Node.Propose.type]
+  type ProposeStrategy = (Node, Node.ProposeEvent) => (Boolean, Timepoint)
+
+  def intervalPropose(delay: TimeDelta): ProposeStrategy = (node, event) => {
+    val lastProposedTime = node.getLastProposedTime
+    val diff = event.scheduledTime - lastProposedTime
+    (diff >= delay, event.scheduledTime + delay)
+  }
+
   sealed trait Comm
   object Comm {
     case class NewBlock(b: Block) extends Comm
