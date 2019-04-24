@@ -8,7 +8,7 @@ import io.casperlabs.sim.simulation_framework.{Agent, AgentsCreationStream, Exte
   * Simulation engine impl based on akka.
   * We arrange here the actor system and create actors that run the simulation.
   */
-class SimulationImpl[MsgPayload, ExtEventPayload] extends Simulation[MsgPayload, ExtEventPayload] {
+class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload] extends Simulation[MsgPayload, ExtEventPayload, PrivatePayload] {
   private val actorSystem = ActorSystem("sim", ConfigFactory.load("sim"))
   private val idGenerator = Iterator.iterate(0L)(_ + 1L)
 
@@ -16,9 +16,9 @@ class SimulationImpl[MsgPayload, ExtEventPayload] extends Simulation[MsgPayload,
 
   override def currentTime(): Timepoint = ???
 
-  override def registerCommunication(event: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload]): Unit = ???
+  override def registerCommunication(event: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = ???
 
-  override def registerAgent(agent: Agent[MsgPayload, ExtEventPayload]): Unit = ???
+  override def registerAgent(agent: Agent[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = ???
 
-  override def start(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload], agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload]): Unit = ???
+  override def start(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload], agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = ???
 }

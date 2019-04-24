@@ -32,7 +32,7 @@ object Gossip {
     * @tparam ExtEventPayload Type of the message coming to nodes from the outside
     * @return Naive gossiping service
     */
-  def naive[MsgPayload, ExtEventPayload](s: Simulation[MsgPayload, ExtEventPayload],
+  def naive[MsgPayload, ExtEventPayload, PrivatePayload](s: Simulation[MsgPayload, ExtEventPayload, PrivatePayload],
                                          d: Discovery[AgentId, AgentId],
                                          n: NetworkBehavior[MsgPayload]
                                         ): Gossip[AgentId, AgentId, MsgPayload] =
@@ -50,7 +50,7 @@ object Gossip {
           for {
             delay <- n.calculateUnicastDelay(msg, d.self, peer, sentTime)
             arrivalTime = sentTime + delay
-          } yield AgentToAgentMsg[MsgPayload, ExtEventPayload](
+          } yield AgentToAgentMsg[MsgPayload, ExtEventPayload, PrivatePayload](
             s.nextId(),
             d.self,
             peer,

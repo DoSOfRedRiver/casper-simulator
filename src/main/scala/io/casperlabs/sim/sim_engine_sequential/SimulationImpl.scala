@@ -6,13 +6,13 @@ import io.casperlabs.sim.simulation_framework._
 
 import scala.collection.mutable
 
-class SimulationImpl[MsgPayload, ExtEventPayload](
+class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload](
                                                simulationEnd: Timepoint,
                                                networkBehavior: NetworkBehavior[MsgPayload]
-                                             ) extends Simulation[MsgPayload, ExtEventPayload] {
+                                             ) extends Simulation[MsgPayload, ExtEventPayload, PrivatePayload] {
 
-  private val queue = new SimEventsQueue[MsgPayload, ExtEventPayload]
-  private val agentsRegistry = new mutable.HashMap[AgentId, Agent[MsgPayload, ExtEventPayload]]
+  private val queue = new SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload]
+  private val agentsRegistry = new mutable.HashMap[AgentId, Agent[MsgPayload, ExtEventPayload, PrivatePayload]]
   private var lastUsedAgentId: Int = 0
   private var lastEventId: Long = 0L
   private var clock: Timepoint = Timepoint(0L)
@@ -22,17 +22,17 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
 
   override def currentTime(): Timepoint = clock
 
-  override def registerAgent(agent: Agent[MsgPayload, ExtEventPayload]): Unit = {
+  override def registerAgent(agent: Agent[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
     lastUsedAgentId += 1
     agentsRegistry += (lastUsedAgentId -> agent)
   }
 
-  override def registerCommunication(event: AgentToAgentMsg[MsgPayload, ExtEventPayload]): Unit =
+  override def registerCommunication(event: AgentToAgentMsg[MsgPayload, ExtEventPayload, PrivatePayload]): Unit =
     queue.enqueue(event)
 
   override def start(
-                      externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload],
-                      agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload]
+                      externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload],
+                      agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]
                     ): Unit = {
     queue.addCreationEvents(agentsCreationStream)
     queue.addExternalEvents(externalEventsGenerator)
@@ -41,7 +41,7 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
       clock = currentEventsQueueItem.scheduledTime
 
       currentEventsQueueItem match {
-        case msg: AgentToAgentMsg[MsgPayload,ExtEventPayload] =>
+        case msg: AgentToAgentMsg[MsgPayload,ExtEventPayload, PrivatePayload] =>
           val agent = agentsRegistry.get(msg.destination) match {
             case Some(x) => x
             case None => throw new RuntimeException(s"unknown agent id ${msg.destination} encountered as destination of message ${msg.id} sent from agent ${msg.source}")
@@ -49,7 +49,7 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
           val processingResult: MsgHandlingResult[MsgPayload] = agent.handleMsg(msg)
           applyEventProcessingResultToSimState(msg.destination, processingResult)
 
-        case ev: ExternalEvent[MsgPayload,ExtEventPayload] =>
+        case ev: ExternalEvent[MsgPayload,ExtEventPayload, PrivatePayload] =>
           val agent = agentsRegistry.get(ev.affectedAgent) match {
             case Some(x) => x
             case None => throw new RuntimeException(s"unknown agent id ${ev.affectedAgent} encountered as destination of external event ${ev.id}")
@@ -57,7 +57,7 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
           val processingResult: MsgHandlingResult[MsgPayload] = agent.handleExternalEvent(ev)
           applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
 
-        case ev: NewAgentCreation[MsgPayload,ExtEventPayload] =>
+        case ev: NewAgentCreation[MsgPayload,ExtEventPayload,PrivatePayload] =>
           registerAgent(ev.agentInstance)
           ev.agentInstance.startup()
       }
@@ -73,7 +73,7 @@ class SimulationImpl[MsgPayload, ExtEventPayload](
       networkDelay match {
         case None => //network failed to deliver the message hence we do nothing
         case Some(delay) =>
-          val msg = AgentToAgentMsg[MsgPayload,ExtEventPayload](
+          val msg = AgentToAgentMsg[MsgPayload,ExtEventPayload,PrivatePayload](
             id = lastEventId,
             source = processingAgentId,
             destination = targetAgentId,
