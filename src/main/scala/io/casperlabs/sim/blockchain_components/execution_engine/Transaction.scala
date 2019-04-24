@@ -11,8 +11,6 @@ sealed abstract class Transaction {
   def gasPrice: Ether
   def gasLimit: Gas
   def nonce: Long
-//  def costIfSuccessful: Ether = this.gasUsed * gasPrice
-//  def costCappedByGasLimit: Ether = math.min(this.gasUsed, this.gasLimit) * gasPrice
 
   private var memoizedHash: Option[HashValue] = None
 
@@ -37,16 +35,13 @@ object Transaction {
   case class EtherTransfer(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, targetAccount: Account, value: Ether) extends Transaction {
   }
 
-  case class ValidatorInit(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, node: NodeId) extends Transaction {
+  case class Bonding(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, validator: ValidatorId, value: Ether) extends Transaction {
   }
 
-  case class Bonding(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, node: NodeId, value: Ether) extends Transaction {
+  case class Unbonding(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, validator: ValidatorId, value: Ether) extends Transaction {
   }
 
-  case class Unbonding(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, node: NodeId, value: Ether) extends Transaction {
-  }
-
-  case class EquivocationSlashing(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, victim: NodeId, evidence: (BlockId, BlockId)) extends Transaction {
+  case class EquivocationSlashing(nonce: Long, sponsor: Account, gasPrice: Ether, gasLimit: Gas, victim: ValidatorId, evidence: (BlockId, BlockId)) extends Transaction {
   }
 
 }

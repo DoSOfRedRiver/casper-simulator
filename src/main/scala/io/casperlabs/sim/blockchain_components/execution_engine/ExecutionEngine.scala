@@ -2,15 +2,14 @@ package io.casperlabs.sim.blockchain_components.execution_engine
 
 import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
-import io.casperlabs.sim.blockchain_models.casperlabs_classic.NormalBlock
 
 /**
   * Default (minimalistic) implementation of an execution engine for proof-of-stake blockchains.
   *
-  * Contains emulation of:
-  * 1. Smart contracts frameworks (pluggable - thanks to ComputingSpace abstraction).
+  * The following features are implemented here:
+  * 1. Smart contracts framework emulation (pluggable - thanks to ComputingSpace abstraction).
   * 2. Internal money (= ether).
-  * 3. PoS support (explicit bonding/unbonding/slashing operations)
+  * 3. PoS support (explicit bonding/unbonding/slashing operations).
   * 4. Execution cost (= gas).
   * 5. User accounts.
   *
@@ -22,223 +21,151 @@ import io.casperlabs.sim.blockchain_models.casperlabs_classic.NormalBlock
 class ExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: BlockchainConfig, computingSpace: CS) {
 
   /**
+    * Executes sequence of transaction as a block.
+    * Caution: this is needed because we have block-level logic and transaction-level logic.
+    *
+    * @param gs global state snapshot at the moment before the transaction is executed
+    * @param transactions sequence of transactions
+    * @creator the validator who created the block
+    */
+  def executeBlock(gs: GlobalState[MS], transactions: Iterable[Transaction], creator: ValidatorId): GlobalState[MS] = {
+    var gsTmp: GlobalState[MS] = gs
+
+    //phase 1: process bonding/unbonding buffers
+    val (updatedValidatorsBook, unbondingTransfers) = gs.validatorsBook.processQueueAccordingToCurrentTime(gs.pTime)
+    gsTmp = GlobalState(gs.memoryState, gs.accounts, updatedValidatorsBook, gs.pTime)
+    for ((validatorId, etherAmount) <- unbondingTransfers)
+      gsTmp = gs.updateAccountBalance(gsTmp.validatorsBook.getInfoAbout(validatorId).account, etherAmount)
+
+    //phase 2: find effective gas price
+    val effectiveGasPrice: Ether = transactions.map(t => t.gasPrice).min
+
+    //phase 3: execute transactions
+    var tmpGS: GlobalState[MS] = gs
+    var gasCounter: Gas = 0
+    for (transaction <- transactions) {
+      val (resultingGS, executionResult) = this.executeTransaction(tmpGS, transaction, effectiveGasPrice)
+      //todo: recording of execution result goes here
+      tmpGS = resultingGS
+      gasCounter += executionResult.gasBurned
+    }
+
+    //phase 4: update block rewards buffer
+    val etherToBeDistributed: Ether = gasCounter * effectiveGasPrice
+    val numberOfValidators: Int = gsTmp.numberOfActiveValidators
+    val profitPerValidator: Ether = etherToBeDistributed / numberOfValidators
+    gsTmp = GlobalState(tmpGS.memoryState, tmpGS.accounts, tmpGS.validatorsBook.storeBlockReward(profitPerValidator, gsTmp.pTime), tmpGS.pTime)
+
+    //phase 5: pay block rewards to the creator of this block
+    val (vBookAfterCreatorPremiumStoreReset, reward) = gsTmp.validatorsBook.consumeBlockRewards(creator, gs.pTime)
+    val profitRemainder: Ether = etherToBeDistributed % numberOfValidators
+    val creatorAccount: Account = gsTmp.validatorsBook.getInfoAbout(creator).account
+    val accountsAfterRewardPayment = gsTmp.accounts.updateBalance(creatorAccount, reward + profitRemainder)
+    gsTmp = new GlobalState[MS](gsTmp.memoryState, accountsAfterRewardPayment, vBookAfterCreatorPremiumStoreReset, gsTmp.pTime)
+
+    //phase 6: update p-time
+    return new GlobalState[MS](gsTmp.memoryState, gsTmp.accounts, gsTmp.validatorsBook, gsTmp.pTime + gasCounter)
+  }
+
+  /**
     * Executes transaction against given global state, producing a new global state.
     *
     * @param gs global state snapshot at the moment before the transaction is executed
     * @param transaction transaction to be executed
     * @return a pair (resulting global state, execution status)
     */
-  def executeTransaction(gs: GlobalState[MS], transaction: Transaction): (GlobalState[MS], TransactionExecutionResult) = {
-    assert(gs.userAccounts.contains(transaction.sponsor))
+  def executeTransaction(gs: GlobalState[MS], transaction: Transaction, gasPrice: Ether): (GlobalState[MS], TransactionExecutionResult) = {
+    //should be checked earlier; if the check fails here then we apparently have a bug
+    assert(gs.accounts.contains(transaction.sponsor))
 
-    if (gs.userAccounts(transaction.sponsor).nonce != transaction.nonce)
-      return (gs, TransactionExecutionResult.NonceMismatch(gasBurned = 0, gs.userAccounts(transaction.sponsor).nonce, transaction.nonce))
+    //nonce mismatch forces quick break; no gas will be consumed from sponsor account
+    if (gs.accounts.getNonceOf(transaction.sponsor) != transaction.nonce)
+      return (gs, TransactionExecutionResult.NonceMismatch(gasBurned = 0, gs.accounts.getNonceOf(transaction.sponsor), transaction.nonce))
 
-    if (gs.userBalance(transaction.sponsor) < transaction.gasLimit * transaction.gasPrice)
-      return (gs, TransactionExecutionResult.GasLimitNotCoveredBySponsorAccountBalance(gasBurned = 0, transaction.gasLimit, transaction.gasLimit * transaction.gasPrice, gs.userBalance(transaction.sponsor)))
+    //before the transaction executing we require that sponsor has enough money to cover the maximum cost of transaction he declared to cover
+    if (gs.accountBalance(transaction.sponsor) < transaction.gasLimit * transaction.gasPrice)
+      return (gs, TransactionExecutionResult.GasLimitNotCoveredBySponsorAccountBalance(gasBurned = 0, transaction.gasLimit, transaction.gasLimit * transaction.gasPrice, gs.accountBalance(transaction.sponsor)))
 
-//    if (transaction.gasUsed > transaction.gasLimit)
-//      return (this.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionStatus.GasLimitExceeded(transaction.gasLimit, transaction.gasUsed))
-
-    val (globalStateAfterTransactionExecution, txResult): (GlobalState[MS], TransactionExecutionResult) = transaction match {
+    //here we execute the per-transaction-type specific part; caution: returned global state does not have transaction cost paid yet !
+    val (gsAfterTransactionExecution, txResult): (GlobalState[MS], TransactionExecutionResult) = transaction match {
       case tx: Transaction.AccountCreation => this.executeAccountCreation(gs, tx)
       case tx: Transaction.SmartContractExecution[CS,P,MS] => this.executeSmartContract(gs, tx)
       case tx: Transaction.EtherTransfer => this.executeEtherTransfer(gs, tx)
-      case tx: Transaction.ValidatorInit => this.executeValidatorInit(gs, tx)
       case tx: Transaction.Bonding => this.executeBonding(gs, tx)
       case tx: Transaction.Unbonding => this.executeUnbonding(gs, tx)
       case tx: Transaction.EquivocationSlashing => this.executeEquivocationSlashing(gs,tx)
     }
 
-    val oldUserAccountState: UserAccountState = gs.userAccounts(transaction.sponsor)
+    //now we know what the actual transaction cost (= gas burned) was
+    //so we are able to calculate new user account state (nonce and ether must be updated)
     val gasCappedByGasLimit: Gas = math.min(txResult.gasBurned, transaction.gasLimit) * transaction.gasPrice
-    val newUserAccountState: UserAccountState = UserAccountState(oldUserAccountState.nonce + 1, oldUserAccountState.balance - gasCappedByGasLimit)
 
-    val effectiveGS = GlobalState[MS](
-      globalStateAfterTransactionExecution.memoryState,
-      globalStateAfterTransactionExecution.userAccounts + (transaction.sponsor -> newUserAccountState),
-      globalStateAfterTransactionExecution.validators,
-      globalStateAfterTransactionExecution.transactionsCostBuffer + gasCappedByGasLimit
-    )
+    //todo: add proper rollback behaviour here (when sponsor has not enough ether left to cover transaction cost, we need to rollback stuff and only take the payment from his account and increase nonce).
 
-    return (effectiveGS, txResult)
+    //if gas limit was exceeded then memory state will not be updated (but the nonce and account's ether will be updated anyway !)
+    val updatedGS = GlobalState[MS](
+        memoryState = if (txResult.gasBurned > transaction.gasLimit) gs.memoryState else gsAfterTransactionExecution.memoryState,
+        accounts = gsAfterTransactionExecution.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - gasCappedByGasLimit),
+        validatorsBook = gsAfterTransactionExecution.validatorsBook,
+        pTime = gsAfterTransactionExecution.pTime + gasCappedByGasLimit
+      )
+
+    return (updatedGS, txResult)
   }
 
-//################################################ PER-TRANSACTION-TYPE SECTIONS #####################################################################
+//################################################ PER-TRANSACTION-TYPE SPECIFIC PARTS #####################################################################
 
   private def executeAccountCreation(gs: GlobalState[MS], tx: Transaction.AccountCreation): (GlobalState[MS], TransactionExecutionResult) = {
-    assert(! gs.userAccounts.contains(tx.newAccount))
-    val result = GlobalState(
-      gs.memoryState,
-      gs.userAccounts + (tx.newAccount -> UserAccountState(nonce = 0L, balance = 0)),
-      gs.validators,
-      gs.transactionsCostBuffer)
-    return (gs, TransactionExecutionResult.Success(config.accountCreationCost))
+    assert(! gs.accounts.contains(tx.newAccount))
+    val updatedGS = GlobalState(
+      memoryState = gs.memoryState,
+      accounts = gs.accounts.addAccount(tx.newAccount),
+      validatorsBook = gs.validatorsBook,
+      pTime = gs.pTime)
+    return (updatedGS, TransactionExecutionResult.Success(config.accountCreationCost))
   }
 
   private def executeSmartContract(gs: GlobalState[MS], tx: Transaction.SmartContractExecution[CS,P,MS]): (GlobalState[MS], TransactionExecutionResult) = {
-    //todo: fix this
-    ???
+    val programResult: computingSpace.ProgramResult = computingSpace.execute(tx.program, gs.memoryState)
 
-    //    val mutatingActions = tx.operations filterNot { case (slot,action) => action == DbAtomicAction.Read }
-//    val actualMutationsAsMap: Map[Slot, Int] = mutatingActions map { case (slot,action) =>
-//      action match {
-//        case DbAtomicAction.Inc => (slot, sharedDatabase(slot) + 1)
-//        case DbAtomicAction.Write(n) => (slot, sharedDatabase(slot) + n)
-//        case DbAtomicAction.Read => throw new RuntimeException("impossible")
-//      }
-//    }
-//    val gs = GlobalState(
-//      sharedDatabase ++ actualMutationsAsMap,
-//      userAccounts,
-//      validators,
-//      transactionsCostBuffer,
-//      config)
-//    return (gs.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.Success)
+    return programResult.ms match {
+      case Some(newMemoryState) => (GlobalState[MS](newMemoryState, gs.accounts, gs.validatorsBook, gs.pTime), TransactionExecutionResult.Success(programResult.gasUsed))
+      case None => (gs, TransactionExecutionResult.SmartContractUnhandledException(programResult.gasUsed))
+    }
   }
 
   private def executeEtherTransfer(gs: GlobalState[MS], tx: Transaction.EtherTransfer): (GlobalState[MS], TransactionExecutionResult) = {
-    //todo: fix this
-    ???
-
-//    val sponsorBalance = userBalance(tx.sponsor)
-//    if (tx.value + transaction.costIfSuccessful > sponsorBalance)
-//      return (this.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.AccountBalanceInsufficient(sponsorBalance))
-//    else {
-//      val oldStateSponsor = userAccounts(tx.sponsor)
-//      val newStateSponsor = UserAccountState(oldStateSponsor.nonce, oldStateSponsor.balance - tx.value)
-//      val oldStateTarget = userAccounts(tx.targetAccount)
-//      val newStateTarget = UserAccountState(oldStateTarget.nonce, oldStateTarget.balance + tx.value)
-//      val gs = GlobalState(
-//        sharedDatabase,
-//        userAccounts + (tx.sponsor -> newStateSponsor) + (tx.targetAccount -> newStateTarget),
-//        validators,
-//        transactionsCostBuffer,
-//        config
-//      )
-//      return (gs.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.Success)
-//    }
-  }
-
-  private def executeValidatorInit(gs: GlobalState[MS], tx: Transaction.ValidatorInit): (GlobalState[MS], TransactionExecutionResult) = {
-    //todo: fix this
-    ???
-
-//    assert (! validators.contains(tx.node))
-//    val sponsorBalance = userBalance(tx.sponsor)
-//    if (transaction.costIfSuccessful > sponsorBalance)
-//      return (this.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.AccountBalanceInsufficient(sponsorBalance))
-//    else {
-//      val gs = GlobalState(
-//        sharedDatabase,
-//        userAccounts,
-//        validators + (tx.node -> ValidatorState(tx.sponsor, 0, 0, isActive = false)),
-//        transactionsCostBuffer,
-//        config
-//      )
-//      return (gs.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.Success)
-//    }
+    return if (gs.accountBalance(tx.sponsor) >= tx.value)
+      (gs.transfer(tx.sponsor, tx.targetAccount, tx.value), TransactionExecutionResult.Success(config.transferCost))
+    else
+      (gs, TransactionExecutionResult.AccountBalanceInsufficientForTransfer(config.transferCost, tx.value, gs.accountBalance(tx.sponsor)))
   }
 
   private def executeBonding(gs: GlobalState[MS], tx: Transaction.Bonding): (GlobalState[MS], TransactionExecutionResult) = {
-    //todo: fix this
-    ???
+    val (updatedValidatorsBook, queueAppendResult) = gs.validatorsBook.addBondingReqToWaitingQueue(tx.validator, tx.value, gs.pTime, config)
 
-//    assert (validators.contains(tx.node))
-//    assert (tx.sponsor == validators(tx.node).account)
-//    val sponsorBalance = userBalance(tx.sponsor)
-//    if (tx.value + transaction.costIfSuccessful > sponsorBalance)
-//      return (this.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.AccountBalanceInsufficient(sponsorBalance))
-//    else {
-//      val oldStateAccount = userAccounts(tx.sponsor)
-//      val newStateAccount = UserAccountState(oldStateAccount.nonce, oldStateAccount.balance - tx.value)
-//      val oldStateValidator = validators(tx.node)
-//      val newStake = oldStateValidator.stake + tx.value
-//      val newStateValidator = ValidatorState(oldStateValidator.account, newStake, oldStateValidator.unconsumedPremiums, isActive = newStake >= config.minimalValidatorStake)
-//      val gs = GlobalState(
-//        sharedDatabase,
-//        userAccounts + (tx.sponsor -> newStateAccount),
-//        validators + (tx.node -> newStateValidator),
-//        transactionsCostBuffer,
-//        config
-//      )
-//      return (gs.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.Success)
-//    }
+    return queueAppendResult match {
+      case ValidatorsBook.BondingQueueAppendResult.OK =>
+        (GlobalState(gs.memoryState, gs.accounts, updatedValidatorsBook, gs.pTime), TransactionExecutionResult.Success(config.successfulBondingCost))
+      case other =>
+        (gs, TransactionExecutionResult.BondingRefused(config.refusedBondingCost, other))
+    }
   }
 
   private def executeUnbonding(gs: GlobalState[MS], tx: Transaction.Unbonding): (GlobalState[MS], TransactionExecutionResult) = {
-    //todo: fix this
-    ???
+    val (updatedValidatorsBook, queueAppendResult) = gs.validatorsBook.addUnbondingReqToWaitingQueue(tx.validator, tx.value, gs.pTime, config)
 
-//    assert (validators.contains(tx.node))
-//    assert (tx.sponsor == validators(tx.node).account)
-//    val oldStateValidator = validators(tx.node)
-//    if (oldStateValidator.stake < tx.value)
-//      return (this.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.UnbondingOverdrive(oldStateValidator.stake, tx.value))
-//    else {
-//      val oldStateAccount = userAccounts(tx.sponsor)
-//      val newStateAccount = UserAccountState(oldStateAccount.nonce, oldStateAccount.balance + tx.value)
-//      val newStake = oldStateValidator.stake - tx.value
-//      val newStateValidator = ValidatorState(oldStateValidator.account, newStake, oldStateValidator.unconsumedPremiums, isActive = newStake >= config.minimalValidatorStake)
-//      val gs = GlobalState(
-//        sharedDatabase,
-//        userAccounts + (tx.sponsor -> newStateAccount),
-//        validators + (tx.node -> newStateValidator),
-//        transactionsCostBuffer,
-//        config
-//      )
-//      return (gs.withCostOfTransactionPaidAndNonceIncremented(transaction), TransactionExecutionResult.Success)
-//    }
-
+    return queueAppendResult match {
+      case ValidatorsBook.BondingQueueAppendResult.OK =>
+        (GlobalState(gs.memoryState, gs.accounts, updatedValidatorsBook, gs.pTime), TransactionExecutionResult.Success(config.successfulBondingCost))
+      case other =>
+        (gs, TransactionExecutionResult.BondingRefused(config.refusedBondingCost, other))
+    }
   }
 
   private def executeEquivocationSlashing(gs: GlobalState[MS], tx: Transaction.EquivocationSlashing): (GlobalState[MS], TransactionExecutionResult) = {
-    //todo: fix this
+    //todo: implement slashing
     ???
-  }
-
-//#############################################################################################################################################
-
-  def applyBlock(block: NormalBlock): GlobalState[MS] = {
-    //todo: fix this
-    ???
-
-//    //apply all transactions
-//    val globalStateAfterAllTransactions = block.transactions.foldLeft(this) { case (gs, t) => gs.applyTransaction(t)._1 }
-//
-//    //distribute total gas payment across validator accounts
-//    val etherToBeDistributed = globalStateAfterAllTransactions.transactionsCostBuffer
-//    val numberOfValidators = this.numberOfActiveValidators
-//    val profitPerValidator: Ether = etherToBeDistributed / numberOfValidators
-//    val profitRemainder: Ether = etherToBeDistributed % numberOfValidators
-//
-//    val updatedValidators: Map[Node, ValidatorState] = globalStateAfterAllTransactions.validators.map {
-//      case (n, vs) =>
-//        if (vs.isActive) {
-//          if (n == block.creator)
-//            n -> ValidatorState(vs.account, vs.stake, 0, vs.isActive)
-//          else
-//            n -> ValidatorState(vs.account, vs.stake, vs.unconsumedPremiums + profitPerValidator, vs.isActive)
-//        }
-//        else
-//          (n, vs)
-//    }
-//
-//    //transfer the accumulated profit to miner's account
-//    val minerAccountId: Account = validators(block.creator).account
-//    val oldStateOfMinerAccount: UserAccountState = globalStateAfterAllTransactions.userAccounts(minerAccountId)
-//    val newStateOfMinerAccount: UserAccountState =
-//      UserAccountState(oldStateOfMinerAccount.nonce, oldStateOfMinerAccount.balance + validators(block.creator).unconsumedPremiums + profitPerValidator + profitRemainder)
-//    val updatedUserAccounts = globalStateAfterAllTransactions.userAccounts + (minerAccountId -> newStateOfMinerAccount)
-//
-//    //put together the new snapshot of global state
-//    return GlobalState(
-//      globalStateAfterAllTransactions.sharedDatabase,
-//      updatedUserAccounts,
-//      updatedValidators,
-//      0,
-//      config
-//    )
   }
 
 

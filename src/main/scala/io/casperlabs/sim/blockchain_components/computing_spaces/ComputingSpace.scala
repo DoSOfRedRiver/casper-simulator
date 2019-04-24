@@ -36,7 +36,7 @@ trait ComputingSpace[Program, MemoryState] {
   def compose(p1: Program, p2: Program): Program
 
   /**
-    * Executes a program agains given memory state.
+    * Executes a program against given memory state.
     *
     * @param program program to be executed
     * @param memState memory state of a blockchain computer at the moment before starting of the program
