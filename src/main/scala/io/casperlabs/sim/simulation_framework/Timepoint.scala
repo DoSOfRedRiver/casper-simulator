@@ -10,4 +10,5 @@ case class Timepoint(micros: Long) extends Ordered[Timepoint] {
 
   def +(delta: TimeDelta): Timepoint = Timepoint(micros + delta)
 
+  def -(other: Timepoint): TimeDelta = this.micros - other.micros
 }

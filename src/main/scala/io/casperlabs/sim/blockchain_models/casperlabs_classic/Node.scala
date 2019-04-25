@@ -4,7 +4,7 @@ import io.casperlabs.sim.blockchain_components.{Discovery, DoublyLinkedDag, Goss
 import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Transaction}
 import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
 import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
-import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem}
+import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem, TimeDelta, Timepoint}
 
 import scala.collection.mutable
 
@@ -13,72 +13,90 @@ class Node(
   stakes: Map[AgentId, Int], // TODO: have this information in block instead
   d: Discovery[AgentId, AgentId],
   g: Gossip[AgentId, AgentId, Node.Comm],
-  genesis: Block
-) extends Agent[Node.Comm, Node.Operation] {
+  genesis: Block,
+  proposeStrategy: Node.ProposeStrategy
+) extends Agent[Node.Comm, Node.Operation, Node.Propose.type] {
   private val deployBuffer: mutable.HashSet[Node.Operation.Deploy] = mutable.HashSet.empty
   private val blockBuffer: mutable.HashSet[Block] = mutable.HashSet.empty
   // TODO: share DAG structure among nodes
   private val pDag: DoublyLinkedDag[Block] = DoublyLinkedDag.pBlockDag(genesis)
   private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesis)
+  // TODO: do this without a var
+  private var lastProposeTime: Timepoint = Timepoint(0L)
 
-  override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[Node.Comm, Node.Operation]): Agent.MsgHandlingResult[Node.Comm] = msg.payload match {
+  def getLastProposedTime: Timepoint = lastProposeTime
+
+  override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[Node.Comm, Node.Operation, Node.Propose.type]): Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = msg.payload match {
     case Node.Comm.NewBlock(b) =>
       handleBlock(b)
   }
 
-  def handleBlock(b: Block): MsgHandlingResult[Node.Comm] =
+  def handleBlock(b: Block): MsgHandlingResult[Node.Comm, Node.Propose.type] =
     addBlock(b) match {
       case Node.AddBlockResult.AlreadyAdded =>
         // We got this block already, nothing to do
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
 
       case Node.AddBlockResult.MissingJustifications(_) =>
         // We can't add this block yet, nothing to send out at this time
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
 
       case Node.AddBlockResult.Invalid =>
         // Something is wrong with the block.
         // No new messages need to be sent.
         // TODO: slashing
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
 
       case Node.AddBlockResult.Valid =>
         // Block is valid, gossip to others.
         g.gossip(Node.Comm.NewBlock(b))
         // TODO: Should this somehow expend time?
-        Agent.MsgHandlingResult(Nil, 0L)
+        Agent.MsgHandlingResult.empty
     }
 
-  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[Node.Comm, Node.Operation]): Agent.MsgHandlingResult[Node.Comm] = event.payload match {
+  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[Node.Comm, Node.Operation, Node.Propose.type]): Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = event.payload match {
     case Node.Operation.NoOp =>
-      Agent.MsgHandlingResult(Nil, 0L) // Nothing to do here
+      Agent.MsgHandlingResult.empty // Nothing to do here
 
     case d: Node.Operation.Deploy =>
       deployBuffer += d // Add to deploy buffer
-      Agent.MsgHandlingResult(Nil, 0L) // No new messages need to be sent
+      Agent.MsgHandlingResult.empty // No new messages need to be sent
+  }
 
-    case Node.Operation.Propose =>
-      // Propose a new block
-      // TODO: check for equivocations?
-      val latestMessages = jDag.tips.groupBy(_.creator).mapValues(_.head)
-      val parents = BlockdagUtils.lmdGhost(
-        latestMessages,
-        stakes,
-        pDag,
-        genesis
-      )
-      // TODO: use execution engine to process deploys
-      val txns = deployBuffer.toIndexedSeq.map(_.t)
-      deployBuffer.clear()
-      val block = NormalBlock(
-        FakeHashGenerator.nextHash(),
-        id,
-        parents.map(_.dagLevel).max + 1,
-        parents,
-        latestMessages.values.toIndexedSeq,
-        txns
-      )
-      handleBlock(block)
+  override def handlePrivateEvent(event: Node.ProposeEvent): MsgHandlingResult[Node.Comm, Node.Propose.type] = {
+    val (shouldPropose, nextEventTime) = proposeStrategy(this, event)
+    val Agent.MsgHandlingResult(out, proposals, time) =
+      if (shouldPropose) {
+        lastProposeTime = event.scheduledTime
+        doPropose
+      }
+      else MsgHandlingResult.empty
+
+    Agent.MsgHandlingResult(out, proposals ++ List(nextEventTime -> Node.Propose), time)
+  }
+
+  private[this] def doPropose: Agent.MsgHandlingResult[Node.Comm, Node.Propose.type] = {
+    // Propose a new block
+    // TODO: check for equivocations?
+    val latestMessages = jDag.tips.groupBy(_.creator).mapValues(_.head)
+    val parents = BlockdagUtils.lmdGhost(
+      latestMessages,
+      stakes,
+      pDag,
+      genesis
+    )
+    // TODO: use execution engine to process deploys
+    val txns = deployBuffer.toIndexedSeq.map(_.t)
+    deployBuffer.clear()
+    val block = NormalBlock(
+      FakeHashGenerator.nextHash(),
+      id,
+      parents.map(_.dagLevel).max + 1,
+      parents,
+      latestMessages.values.toIndexedSeq,
+      txns
+    )
+    handleBlock(block)
   }
 
   override def startup(): Unit = ???
@@ -111,6 +129,15 @@ class Node(
 }
 
 object Node {
+  type ProposeEvent = SimEventsQueueItem.PrivateEvent[Node.Comm, Node.Operation, Node.Propose.type]
+  type ProposeStrategy = (Node, Node.ProposeEvent) => (Boolean, Timepoint)
+
+  def intervalPropose(delay: TimeDelta): ProposeStrategy = (node, event) => {
+    val lastProposedTime = node.getLastProposedTime
+    val diff = event.scheduledTime - lastProposedTime
+    (diff >= delay, event.scheduledTime + delay)
+  }
+
   sealed trait Comm
   object Comm {
     case class NewBlock(b: Block) extends Comm
@@ -119,14 +146,14 @@ object Node {
   sealed trait Operation
   object Operation {
     case class Deploy(t: Transaction) extends Operation
-    case object Propose extends Operation
     // "Do nothing command", needed to allow infinite external events
     case object NoOp extends Operation
 
     def deploy(t: Transaction): Operation = Deploy(t)
-    def propose: Operation = Propose
     def noOp: Operation = NoOp
   }
+
+  case object Propose
 
   sealed trait AddBlockResult
   object AddBlockResult {

@@ -14,7 +14,7 @@ object CLClassicFixedNetwork {
     val nodeIds = (1 to nNodes).toVector
     val stakes = nodeIds.map(i => (i, 2 * i + 1)).toMap
     val network = NetworkBehavior.uniform[Node.Comm](0L, 10L, 0d)
-    val sim = new SimulationImpl[Node.Comm, Node.Operation](
+    val sim = new SimulationImpl[Node.Comm, Node.Operation, Node.Propose.type](
       Timepoint(simEndTime),
       network
     )
@@ -23,19 +23,22 @@ object CLClassicFixedNetwork {
       val others = nodeIds.filterNot(_ == local).toList
       val discovery = Discovery.fixedPool(local, others)
       val gossip = Gossip.naive(sim, discovery, network)
+      // TODO: different propose intervals?
+      val proposeStrategy = Node.intervalPropose(10L)
       new Node(
         id,
         stakes,
         discovery,
         gossip,
-        Genesis
+        Genesis,
+        proposeStrategy
       )
     })
 
     val creation = AgentsCreationStream.fromIterator(
       Iterator.from(0).map {
         index =>
-          val agent: Agent[Node.Comm, Node.Operation] =
+          val agent: Agent[Node.Comm, Node.Operation, Node.Propose.type] =
             if (index < nNodes) agents(index)
             else Agent.noOp(index)
 
@@ -51,7 +54,7 @@ object CLClassicFixedNetwork {
       Iterator
         .iterate(0L)(_ + 100L)
         .map { time =>
-            ExternalEvent[Node.Comm, Node.Operation](
+            ExternalEvent[Node.Comm, Node.Operation, Node.Propose.type](
               sim.nextId(),
               nodeIds.head,
               Timepoint(time),
