@@ -1,10 +1,10 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.blockchain_components.{Discovery, DoublyLinkedDag, Gossip}
-import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Transaction}
+import io.casperlabs.sim.blockchain_components.execution_engine.{Gas, Transaction}
 import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
+import io.casperlabs.sim.blockchain_components.{Discovery, DoublyLinkedDag, Gossip}
 import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
-import io.casperlabs.sim.simulation_framework.{Agent, AgentId, SimEventsQueueItem, TimeDelta, Timepoint}
+import io.casperlabs.sim.simulation_framework._
 
 import scala.collection.mutable
 
@@ -86,6 +86,8 @@ class Node(
       genesis
     )
     // TODO: use execution engine to process deploys
+    val pTimeOfThisBlock: Gas = 1 //todo: actual value of p-time should be provided here
+    val gasBurned: Gas = 1 //todo: actual value of gas burned in this block should be provided here
     val txns = deployBuffer.toIndexedSeq.map(_.t)
     deployBuffer.clear()
     val block = NormalBlock(
@@ -94,7 +96,9 @@ class Node(
       parents.map(_.dagLevel).max + 1,
       parents,
       latestMessages.values.toIndexedSeq,
-      txns
+      txns,
+      pTimeOfThisBlock,
+      gasBurned
     )
     handleBlock(block)
   }
