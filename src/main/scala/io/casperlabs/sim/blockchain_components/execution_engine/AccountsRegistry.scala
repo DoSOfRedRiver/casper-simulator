@@ -1,5 +1,7 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
+import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
+
 /**
   * Immutable data structure we use to keep complete information about accounts (as seen on-chain).
   * This is part of global state.
@@ -64,13 +66,23 @@ class AccountsRegistry private (private val m: Map[Account, AccountState]) {
     return new AccountsRegistry(m + (account -> newState))
   }
 
+  def updateBalances(updates: Map[Account, Ether]): AccountsRegistry = {
+    val mapOfUpdatedAccountStates = updates map { case (acc, delta) =>
+      val oldAccountState = m(acc)
+      val newAccountState = AccountState(oldAccountState.nonce, oldAccountState.balance + delta)
+      assert(newAccountState.balance > 0)
+      (acc, newAccountState)
+    }
+
+    return new AccountsRegistry(m ++ mapOfUpdatedAccountStates)
+  }
+
   def updateBalanceAndIncreaseNonce(account: Account, delta: Ether): AccountsRegistry = {
     val oldState = m.getOrElse(account, AccountState.empty)
     assert(oldState.balance + delta >= 0)
     val newState = AccountState(oldState.nonce + 1, oldState.balance + delta)
     return new AccountsRegistry(m + (account -> newState))
   }
-
 
   def contains(account: Account): Boolean = m.contains(account)
 
@@ -79,5 +91,11 @@ class AccountsRegistry private (private val m: Map[Account, AccountState]) {
 object AccountsRegistry {
 
   val empty: AccountsRegistry = new AccountsRegistry(Map.empty[Account, AccountState])
+
+  case class AccountState(nonce: Long, balance: Ether)
+
+  object AccountState {
+    val empty: AccountState = AccountState(0,0)
+  }
 
 }
