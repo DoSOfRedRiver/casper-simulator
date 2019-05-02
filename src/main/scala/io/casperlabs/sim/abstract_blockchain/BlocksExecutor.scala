@@ -7,8 +7,9 @@ import io.casperlabs.sim.blockchain_models.casperlabs_classic.Block
   * Encapsulates block-level execution logic.
   *
   * @tparam MS type of memory states
+  * @tparam B type of blocks
   */
-trait BlocksExecutor[MS] {
+trait BlocksExecutor[MS, B <: AbstractBlock] {
 
   /**
     * Executes a block.
@@ -17,6 +18,6 @@ trait BlocksExecutor[MS] {
     * @param block sequence of transactions
     * @return (post-state, gas burned in block)
     */
-  def executeBlock(preState: GlobalState[MS], block: Block): (GlobalState[MS], Gas)
+  def executeBlock(preState: GlobalState[MS], block: B): (GlobalState[MS], Gas)
 
 }
