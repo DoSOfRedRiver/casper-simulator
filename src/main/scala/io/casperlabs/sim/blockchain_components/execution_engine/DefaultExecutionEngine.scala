@@ -19,7 +19,7 @@ import io.casperlabs.sim.blockchain_components.hashing.Sha256Hash
   * @tparam P
   * @tparam MS
   */
-class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: BlockchainConfig, computingSpace: CS) extends ExecutionEngine[MS] {
+class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: BlockchainConfig, computingSpace: CS) extends ExecutionEngine[MS, Transaction] {
 
   /**
     * Executes transaction against given global state, producing a new global state.

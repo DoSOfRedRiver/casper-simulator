@@ -6,7 +6,7 @@ import io.casperlabs.sim.blockchain_components.execution_engine._
 /**
   * Encapsulates block-level execution logic.
   */
-class CasperMainchainBlocksExecutor[CS, P, MS](executionEngine: ExecutionEngine[MS], config: BlockchainConfig) extends BlocksExecutor[MS] {
+class CasperMainchainBlocksExecutor[CS, P, MS](executionEngine: ExecutionEngine[MS, Transaction], config: BlockchainConfig) extends BlocksExecutor[MS, Block] {
 
   def executeBlock(preState: GlobalState[MS], block: Block): (GlobalState[MS], Gas) = {
     //cleanup block rewards queue
