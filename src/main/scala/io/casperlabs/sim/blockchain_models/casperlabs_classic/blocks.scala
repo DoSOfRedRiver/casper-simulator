@@ -2,8 +2,7 @@ package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
 import io.casperlabs.sim.abstract_blockchain.AbstractBlock
 import io.casperlabs.sim.blockchain_components.execution_engine.{BlockId, Gas, Transaction, ValidatorId}
-import io.casperlabs.sim.blockchain_components.hashing.{FakeHashGenerator, HashValue}
-import io.casperlabs.sim.simulation_framework.AgentId
+import io.casperlabs.sim.blockchain_components.hashing.HashValue
 
 sealed abstract class Block extends AbstractBlock {
   def dagLevel: Int
@@ -12,7 +11,7 @@ sealed abstract class Block extends AbstractBlock {
 }
 
 case object Genesis extends Block {
-  override val id: BlockId = FakeHashGenerator.nextHash()
+  override val id: BlockId = HashValue(314159265358979323L)
   override val creator: ValidatorId = -1 // no one created genesis
   override def dagLevel: Int = 0
   override def parents: IndexedSeq[Block] = IndexedSeq.empty
@@ -30,7 +29,8 @@ case class NormalBlock(
                   justifications: IndexedSeq[Block],
                   transactions: IndexedSeq[Transaction],
                   pTime: Gas,
-                  gasBurned: Gas
+                  gasBurned: Gas,
+                  postStateHash: Int
           ) extends Block
 {
 

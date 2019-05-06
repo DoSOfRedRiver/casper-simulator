@@ -6,6 +6,8 @@ import io.casperlabs.sim.sim_engine_sequential.SimulationImpl
 import io.casperlabs.sim.simulation_framework.SimEventsQueueItem.{ExternalEvent, NewAgentCreation}
 import io.casperlabs.sim.simulation_framework.{Agent, AgentsCreationStream, ExternalEventsStream, NetworkBehavior, Timepoint}
 
+import scala.util.Random
+
 object CLClassicFixedNetwork {
   def main(args: Array[String]): Unit = {
     val nNodes = 3
@@ -31,7 +33,8 @@ object CLClassicFixedNetwork {
         discovery,
         gossip,
         Genesis,
-        proposeStrategy
+        proposeStrategy,
+        new Random()
       )
     })
 

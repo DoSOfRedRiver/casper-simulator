@@ -7,6 +7,7 @@ import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
 import io.casperlabs.sim.simulation_framework._
 
 import scala.collection.mutable
+import scala.util.Random
 
 class Node(
   override val id: AgentId,
@@ -14,7 +15,8 @@ class Node(
   d: Discovery[AgentId, AgentId],
   g: Gossip[AgentId, AgentId, Node.Comm],
   genesis: Block,
-  proposeStrategy: Node.ProposeStrategy
+  proposeStrategy: Node.ProposeStrategy,
+  random: Random
 ) extends Agent[Node.Comm, Node.Operation, Node.Propose.type] {
   private val deployBuffer: mutable.HashSet[Node.Operation.Deploy] = mutable.HashSet.empty
   private val blockBuffer: mutable.HashSet[Block] = mutable.HashSet.empty
@@ -23,6 +25,7 @@ class Node(
   private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesis)
   // TODO: do this without a var
   private var lastProposeTime: Timepoint = Timepoint(0L)
+  private val fakeHashGenerator = new FakeHashGenerator(random)
 
   def getLastProposedTime: Timepoint = lastProposeTime
 
@@ -91,7 +94,7 @@ class Node(
     val txns = deployBuffer.toIndexedSeq.map(_.t)
     deployBuffer.clear()
     val block = NormalBlock(
-      FakeHashGenerator.nextHash(),
+      fakeHashGenerator.nextHash(),
       id,
       parents.map(_.dagLevel).max + 1,
       parents,

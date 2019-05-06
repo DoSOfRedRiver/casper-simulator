@@ -1,5 +1,7 @@
 package io.casperlabs.sim.blockchain_components.computing_spaces
 
+import java.security.MessageDigest
+
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
 
@@ -42,6 +44,13 @@ object ZeroOneSpace {
       resultingMemState match {
         case Some(ms) => ProgramResult.Success(ms, 1)
         case None => ProgramResult.Crash(1)
+      }
+    }
+
+    override def updateDigest(ms: MemoryState, digest: MessageDigest): Unit = {
+      ms match {
+        case MemoryState.Zero => digest.update(0.toByte)
+        case MemoryState.One => digest.update(1.toByte)
       }
     }
   }

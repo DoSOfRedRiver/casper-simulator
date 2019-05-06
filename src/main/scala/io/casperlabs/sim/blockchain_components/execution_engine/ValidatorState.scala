@@ -8,12 +8,12 @@ import scala.collection.immutable.Queue
   * Read only data structure, which is part of the implementation of ValidatorsBook.
   * Keeps info about one validator.
   *
-  * @param id
-  * @param account
-  * @param stake
-  * @param bondingEscrow
-  * @param unbondingEscrow
-  * @param unconsumedBlockRewards
+  * @param id id of the validator
+  * @param account owning account; bonding and unbonding moves ether between this account and internal "stake" pseudo-account
+  * @param stake pseudo-account where the stake of the validator is kept
+  * @param bondingEscrow pseudo-account where the bonding escrow is kept (ether took for future bonding while appending a new bonding request to the waiting queue)
+  * @param unbondingEscrow pseudo-account where the unbonding escrow is kept (ether took from stake while appending a new unbonding request to the waiting queue)
+  * @param unconsumedBlockRewards collection of block rewards this validator can claim
   */
 private[execution_engine] class ValidatorState private (
                                val id: ValidatorId,
@@ -46,9 +46,6 @@ private[execution_engine] class ValidatorState private (
 
 
   def resetUnconsumedBlockRewards: ValidatorState = new ValidatorState(id, account, stake, bondingEscrow, unbondingEscrow, Queue.empty[UnconsumedBlockRewardInfo])
-
-//  def cleanupUnconsumedBlockRewardsQueue(blockTime: Gas, timeLimitForClaimingBlockReward: Gas): ValidatorState =
-//    new ValidatorState(id, account, stake, bondingEscrow, unbondingEscrow, unconsumedBlockRewards.dropWhile(item => item.pTimeWhenEarned + timeLimitForClaimingBlockReward < blockTime))
 
   def isReadyToBeForgotten: Boolean = stake == 0 && bondingEscrow == 0 && unbondingEscrow == 0
 

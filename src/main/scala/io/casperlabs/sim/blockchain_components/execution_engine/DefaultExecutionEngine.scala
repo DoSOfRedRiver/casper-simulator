@@ -1,7 +1,10 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
+import java.security.MessageDigest
+
 import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ExecutionEngine}
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
+import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook.{BondingQueueAppendResult, UnbondingQueueAppendResult}
 import io.casperlabs.sim.blockchain_components.hashing.Sha256Hash
 
 /**
@@ -19,7 +22,7 @@ import io.casperlabs.sim.blockchain_components.hashing.Sha256Hash
   * @tparam P
   * @tparam MS
   */
-class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: BlockchainConfig, computingSpace: CS) extends ExecutionEngine[MS, Transaction] {
+class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: ComputingSpace[P,MS]) extends ExecutionEngine[MS, Transaction] {
 
   /**
     * Executes transaction against given global state, producing a new global state.
@@ -45,58 +48,61 @@ class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: Blockch
     //here we execute the per-transaction-type specific part; caution: returned global state does not have transaction cost paid yet !
     val (gsAfterTransactionExecution, txResult): (GlobalState[MS], TransactionExecutionResult) = transaction match {
       case tx: Transaction.AccountCreation => this.executeAccountCreation(gs, tx)
-      case tx: Transaction.SmartContractExecution[CS,P,MS] => this.executeSmartContract(gs, tx)
+      case tx: Transaction.SmartContractExecution[P,MS] => this.executeSmartContract(gs, tx)
       case tx: Transaction.EtherTransfer => this.executeEtherTransfer(gs, tx)
       case tx: Transaction.Bonding => this.executeBonding(gs, tx, blockTime)
       case tx: Transaction.Unbonding => this.executeUnbonding(gs, tx, blockTime)
       case tx: Transaction.EquivocationSlashing => this.executeEquivocationSlashing(gs,tx)
     }
 
-    //now we know what the actual transaction cost (= gas burned) was
-    //so we are able to calculate new user account state (nonce and ether must be updated)
-    //but we still have two violations possible:
-    //1. actual gas burned could exceed gas limit set by the sponsor
-    //2. amount of ether left on the account may not be enough to cover transaction cost (because the transaction itself could take some money - for example bonding does this !)
-
-    val gasCappedByGasLimit: Gas = math.min(txResult.gasBurned, transaction.gasLimit)
-
-    //case 1: gas limit exceeded
+    //if gas limit was exceeded, we ignore any other possible error
     if (txResult.gasBurned > transaction.gasLimit) {
       val updatedGS = GlobalState[MS](
         memoryState = gs.memoryState,
-        accounts = gsAfterTransactionExecution.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - gasCappedByGasLimit * effectiveGasPrice),
-        validatorsBook = gsAfterTransactionExecution.validatorsBook
+        accounts = gs.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - transaction.gasLimit * effectiveGasPrice),
+        validatorsBook = gs.validatorsBook
       )
-      return (updatedGS, TransactionExecutionResult.GasLimitExceeded(
-        gasBurned = gasCappedByGasLimit,
-        gasReallyNeededForSuccessfulExecution = txResult.gasBurned,
-        gasLimit = transaction.gasLimit)
-      )
+      return (updatedGS, TransactionExecutionResult.GasLimitExceeded(transaction.gasLimit))
     }
 
-    //case 2: not enough ether left to cover transaction cost
-    val sponsorBalanceAfterTxExecution: Ether = gsAfterTransactionExecution.accountBalance(transaction.sponsor)
-    if (sponsorBalanceAfterTxExecution < txResult.gasBurned * effectiveGasPrice) {
-      val updatedGS = GlobalState[MS](
-        memoryState = gs.memoryState,
-        accounts = gsAfterTransactionExecution.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - gasCappedByGasLimit * effectiveGasPrice),
-        validatorsBook = gsAfterTransactionExecution.validatorsBook
-      )
-      return (updatedGS, TransactionExecutionResult.AccountBalanceLeftInsufficientForCoveringGasCostAfterTransactionWasExecuted(
-        gasBurned = gasCappedByGasLimit,
-        gasBurnedIfSuccessful = txResult.gasBurned,
-        gasCostIfSuccessful = txResult.gasBurned * effectiveGasPrice,
-        balanceOfSponsorAccountWhenGasCostFailedAttemptHappened = sponsorBalanceAfterTxExecution)
-      )
+    txResult match {
+
+      case TransactionExecutionResult.Success(gasBurned) =>
+        //not enough ether left to cover transaction cost
+        val sponsorBalanceAfterTxExecution: Ether = gsAfterTransactionExecution.accountBalance(transaction.sponsor)
+        if (sponsorBalanceAfterTxExecution < gasBurned * effectiveGasPrice) {
+          val updatedGS = GlobalState[MS](
+            memoryState = gs.memoryState,
+            accounts = gs.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - gasBurned * effectiveGasPrice),
+            validatorsBook = gs.validatorsBook
+          )
+          return (updatedGS, TransactionExecutionResult.AccountBalanceLeftInsufficientForCoveringGasCostAfterTransactionWasExecuted(
+            gasBurned = transaction.gasLimit,
+            gasBurnedIfSuccessful = gasBurned,
+            gasCostIfSuccessful = gasBurned * effectiveGasPrice,
+            balanceOfSponsorAccountWhenGasCostFailedAttemptHappened = sponsorBalanceAfterTxExecution)
+          )
+        }
+
+        //everything looks good, this is a happy path
+        val updatedGS = GlobalState[MS](
+          memoryState = gsAfterTransactionExecution.memoryState,
+          accounts = gsAfterTransactionExecution.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - txResult.gasBurned * effectiveGasPrice),
+          validatorsBook = gsAfterTransactionExecution.validatorsBook
+        )
+        return (updatedGS, txResult)
+
+      case other =>
+        //transaction execution failed; we retain the original transaction result, only the gas cost must be taken from sponsor account
+        val updatedGS = GlobalState[MS](
+          memoryState = gs.memoryState,
+          accounts = gs.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - other.gasBurned * effectiveGasPrice),
+          validatorsBook = gs.validatorsBook
+        )
+        return (updatedGS, other)
+
     }
 
-    //case 3: everything looks good, this is a happy path
-    val updatedGS = GlobalState[MS](
-        memoryState = gsAfterTransactionExecution.memoryState,
-        accounts = gsAfterTransactionExecution.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - txResult.gasBurned * effectiveGasPrice),
-        validatorsBook = gsAfterTransactionExecution.validatorsBook
-      )
-    return (updatedGS, txResult)
   }
 
   /**
@@ -106,8 +112,9 @@ class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: Blockch
     * @return Sha-256 hash
     */
   def globalStateHash(gs: GlobalState[MS]): Sha256Hash = {
-    //todo
-    ???
+    val sha256Mixer = MessageDigest.getInstance("SHA-256")
+    computingSpace.
+
   }
 
 //################################################ PER-TRANSACTION-TYPE SPECIFIC PARTS #####################################################################
@@ -121,12 +128,16 @@ class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: Blockch
     return (updatedGS, TransactionExecutionResult.Success(config.accountCreationCost))
   }
 
-  private def executeSmartContract(gs: GlobalState[MS], tx: Transaction.SmartContractExecution[CS,P,MS]): (GlobalState[MS], TransactionExecutionResult) = {
-    val programResult: computingSpace.ProgramResult = computingSpace.execute(tx.program, gs.memoryState)
+  private def executeSmartContract(gs: GlobalState[MS], tx: Transaction.SmartContractExecution[P,MS]): (GlobalState[MS], TransactionExecutionResult) = {
+    val programResult: computingSpace.ProgramResult = computingSpace.execute(tx.program, gs.memoryState, tx.gasLimit)
 
-    return programResult.ms match {
-      case Some(newMemoryState) => (GlobalState[MS](newMemoryState, gs.accounts, gs.validatorsBook), TransactionExecutionResult.Success(programResult.gasUsed))
-      case None => (gs, TransactionExecutionResult.SmartContractUnhandledException(programResult.gasUsed))
+    return programResult match {
+      case computingSpace.ProgramResult.Success(newMemoryState, gas) =>
+        (GlobalState[MS](newMemoryState, gs.accounts, gs.validatorsBook), TransactionExecutionResult.Success(gas))
+      case computingSpace.ProgramResult.Crash(gas) =>
+        (gs, TransactionExecutionResult.SmartContractUnhandledException(gas))
+      case computingSpace.ProgramResult.GasLimitExceeded =>
+        (gs, TransactionExecutionResult.GasLimitExceeded(tx.gasLimit))
     }
   }
 
@@ -141,6 +152,12 @@ class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: Blockch
     val currentBalance = gs.accountBalance(tx.sponsor)
     if (currentBalance < tx.value)
       return (gs, TransactionExecutionResult.AccountBalanceInsufficientForTransfer(config.refusedBondingCost, tx.value, currentBalance))
+
+    if (gs.validatorsBook.isRegistered(tx.validator)) {
+      val ownerAccount = gs.validatorsBook.getInfoAbout(tx.validator).account
+      if (tx.sponsor != ownerAccount)
+        return (gs, TransactionExecutionResult.BondingRefused(config.refusedBondingCost, BondingQueueAppendResult.AccountMismatch))
+    }
 
     val (updatedValidatorsBook, queueAppendResult) =
       gs.validatorsBook.addBondingReqToWaitingQueue(
@@ -159,6 +176,16 @@ class DefaultExecutionEngine[CS <: ComputingSpace[P, MS], P, MS](config: Blockch
   }
 
   private def executeUnbonding(gs: GlobalState[MS], tx: Transaction.Unbonding, blockTime: Gas): (GlobalState[MS], TransactionExecutionResult) = {
+    if (gs.validatorsBook.isRegistered(tx.validator)) {
+      val info = gs.validatorsBook.getInfoAbout(tx.validator)
+      if (info.stake == 0)
+        return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedBondingCost, UnbondingQueueAppendResult.ValidatorNotActive))
+      if (tx.sponsor != info.account)
+        return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedBondingCost, UnbondingQueueAppendResult.AccountMismatch))
+    } else {
+      return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedBondingCost, UnbondingQueueAppendResult.ValidatorNotActive))
+    }
+
     val (updatedValidatorsBook, queueAppendResult) =
       gs.validatorsBook.addUnbondingReqToWaitingQueue(
         validator = tx.validator,
