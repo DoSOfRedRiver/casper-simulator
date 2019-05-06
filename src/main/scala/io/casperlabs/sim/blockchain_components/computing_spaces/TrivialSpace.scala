@@ -1,6 +1,7 @@
 package io.casperlabs.sim.blockchain_components.computing_spaces
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
+import io.casperlabs.sim.blockchain_components.execution_engine.Gas
 
 /**
   * Trivial computing space.
@@ -24,7 +25,7 @@ object TrivialSpace {
 
     override def compose(p1: Program, p2: Program): Program = Program.Singleton
 
-    override def execute(program: Program, on: MemoryState): ProgramResult = ProgramResult(Some(MemoryState.Singleton), 1)
+    override def execute(program: Program, on: MemoryState, gasLimit: Gas): ProgramResult = ProgramResult.Success(MemoryState.Singleton, 1)
   }
 
 }

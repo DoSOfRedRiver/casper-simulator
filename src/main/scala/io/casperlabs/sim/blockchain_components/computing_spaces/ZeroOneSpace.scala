@@ -1,6 +1,7 @@
 package io.casperlabs.sim.blockchain_components.computing_spaces
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
+import io.casperlabs.sim.blockchain_components.execution_engine.Gas
 
 /**
   * Minimalistic computing space, where there are only two memory states: 0 and 1.
@@ -32,10 +33,15 @@ object ZeroOneSpace {
       )
     }
 
-    override def execute(program: Program, memState: MemoryState): ProgramResult = {
-      memState match {
-        case MemoryState.Zero => ProgramResult(program.valueAtZero, 1)
-        case MemoryState.One => ProgramResult(program.valueAtOne, 1)
+    override def execute(program: Program, memState: MemoryState, gasLimit: Gas): ProgramResult = {
+      val resultingMemState: Option[MemoryState] = memState match {
+        case MemoryState.Zero => program.valueAtZero
+        case MemoryState.One => program.valueAtOne
+      }
+
+      resultingMemState match {
+        case Some(ms) => ProgramResult.Success(ms, 1)
+        case None => ProgramResult.Crash(1)
       }
     }
   }
