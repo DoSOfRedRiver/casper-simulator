@@ -12,7 +12,8 @@ libraryDependencies ++= {
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
     "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
     "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test",
-    "org.scalatest" % "scalatest_2.12" % "3.0.5" % "test"
+    "org.scalatest" % "scalatest_2.12" % "3.0.5" % "test",
+    "io.reactivex" %% "rxscala" % "0.26.5"
   )
 }
 
