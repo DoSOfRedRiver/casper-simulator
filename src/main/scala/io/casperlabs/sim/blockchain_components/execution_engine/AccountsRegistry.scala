@@ -6,7 +6,7 @@ import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry
   * Immutable data structure we use to keep complete information about accounts (as seen on-chain).
   * This is part of global state.
   */
-class AccountsRegistry private (private val m: Map[Account, AccountState]) {
+class AccountsRegistry (m: Map[Account, AccountState]) {
 
   def addAccount(account: Account): AccountsRegistry = {
     assert (! m.contains(account))

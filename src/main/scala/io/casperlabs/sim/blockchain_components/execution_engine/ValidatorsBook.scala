@@ -193,6 +193,8 @@ class ValidatorsBook private (
     */
   def getInfoAbout(validator: ValidatorId): ValidatorState = validators(validator)
 
+  def isRegistered(validator: ValidatorId): Boolean = validators.contains(validator)
+
   /**
     * Sum of stake that active validators have together.
     */
@@ -311,6 +313,17 @@ object ValidatorsBook {
     lastPTimeSeen = 0
   )
 
+  def genesis(foundersMap: Map[ValidatorId, ValidatorState]): ValidatorsBook = new ValidatorsBook(
+    validators = foundersMap,
+    blocksWithActiveRewardsPayment = Queue.empty,
+    blocksRewardEscrow = Map.empty,
+    bondingQueue = Queue.empty,
+    unbondingQueue = Queue.empty,
+    cachedNumberOfActiveValidators = foundersMap.values.count(s => s.stake > 0),
+    cachedTotalStake = foundersMap.values.map(s => s.stake).sum,
+    lastPTimeSeen = 0
+  )
+
   case class BondingQueueItem(validator: ValidatorId, amount: Ether, requestTime: Gas, triggeringTime: Gas)
 
   case class UnbondingQueueItem(validator: ValidatorId, amount: Ether, requestTime: Gas, triggeringTime: Gas)
@@ -325,6 +338,7 @@ object ValidatorsBook {
     case object EffectiveStakeAboveMax extends BondingQueueAppendResult
     case object NumberOfItemsInSlidingWindowExceeded extends BondingQueueAppendResult
     case object SumOfItemsInSlidingWindowExceeded extends BondingQueueAppendResult
+    case object AccountMismatch extends BondingQueueAppendResult
   }
 
   sealed abstract class UnbondingQueueAppendResult
@@ -339,6 +353,7 @@ object ValidatorsBook {
     case object SumOfItemsInSlidingWindowExceeded extends UnbondingQueueAppendResult
     case object ValidatorNotActive extends UnbondingQueueAppendResult
     case object BondingRequestsCurrentlyQueued extends UnbondingQueueAppendResult
+    case object AccountMismatch extends UnbondingQueueAppendResult
   }
 
 }
