@@ -22,6 +22,7 @@ trait BlockchainConfig {
   def minStake: Ether
   def minBondingUnbondingRequest: Ether
   def maxBondingRequest: Ether
+  def maxUnbondingRequest: Ether
   def bondingSlidingWindowSize: Gas
   def unbondingSlidingWindowSize: Gas
   def bondingTrafficAsNumberOfRequestsLimit: Int

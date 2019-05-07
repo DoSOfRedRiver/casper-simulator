@@ -32,6 +32,7 @@ object CLClassicFixedNetwork {
     val minStake: Ether = 5
     val minBondingUnbondingRequest: Ether = 50
     val maxBondingRequest: Ether = 500
+    val maxUnbondingRequest: Ether = 500
     val bondingSlidingWindowSize: Gas = 500
     val unbondingSlidingWindowSize: Gas = 500
     val bondingTrafficAsNumberOfRequestsLimit: Int = 5
