@@ -1,5 +1,8 @@
 package io.casperlabs.sim.experiments
 
+import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
+import io.casperlabs.sim.blockchain_components.execution_engine.{Ether, Gas}
+import io.casperlabs.sim.blockchain_components.hashing.FakeSha256Digester
 import io.casperlabs.sim.blockchain_components.{Discovery, Gossip}
 import io.casperlabs.sim.blockchain_models.casperlabs_classic.{Genesis, Node}
 import io.casperlabs.sim.sim_engine_sequential.SimulationImpl
@@ -9,6 +12,36 @@ import io.casperlabs.sim.simulation_framework.{Agent, AgentsCreationStream, Exte
 import scala.util.Random
 
 object CLClassicFixedNetwork {
+  val random = new Random
+  val fakeSha256Digester = new FakeSha256Digester(random)
+  val genesisBlock = Genesis.generate("casperlabs", fakeSha256Digester.generateHash())
+
+  val config: BlockchainConfig = new BlockchainConfig {
+
+    val accountCreationCost: Gas = 10
+    val transferCost: Gas = 2
+    val successfulBondingCost: Gas = 20
+    val refusedBondingCost: Gas = 2
+    val successfulUnbondingCost: Gas = 20
+    val refusedUnbondingCost: Gas = 2
+    val slashingCost: Gas = 1
+
+    val bondingDelay: Gas = 200
+    val unbondingDelay: Gas = 200
+    val maxStake: Ether = 1000
+    val minStake: Ether = 5
+    val minBondingUnbondingRequest: Ether = 50
+    val maxBondingRequest: Ether = 500
+    val bondingSlidingWindowSize: Gas = 500
+    val unbondingSlidingWindowSize: Gas = 500
+    val bondingTrafficAsNumberOfRequestsLimit: Int = 5
+    val bondingTrafficAsStakeDifferenceLimit: Ether =  500
+    val unbondingTrafficAsNumberOfRequestsLimit: Int = 5
+    val unbondingTrafficAsStakeDifferenceLimit: Ether = 800
+
+    val pTimeLimitForClaimingBlockReward: Gas = 2000
+  }
+
   def main(args: Array[String]): Unit = {
     val nNodes = 3
     val simEndTime = 1000L
@@ -32,9 +65,9 @@ object CLClassicFixedNetwork {
         stakes,
         discovery,
         gossip,
-        Genesis,
+        genesisBlock,
         proposeStrategy,
-        new Random()
+        config
       )
     })
 

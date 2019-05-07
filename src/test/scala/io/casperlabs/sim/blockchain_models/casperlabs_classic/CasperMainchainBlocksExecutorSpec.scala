@@ -2,7 +2,7 @@ package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
 import io.casperlabs.sim.BaseSpec
 import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
-import io.casperlabs.sim.blockchain_components.computing_spaces.MockingSpace
+import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace, MockingSpace}
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
 import io.casperlabs.sim.blockchain_components.execution_engine._
 import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
@@ -11,9 +11,14 @@ import scala.util.Random
 
 class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
+  type MS = MockingSpace.MemoryState
+  type P = MockingSpace.Program
+  type CS = ComputingSpace[P,MS]
+  type GS = GlobalState[MS]
+
   //###################################### BLOCKCHAIN CONFIG ##################################
 
-  val config = new BlockchainConfig {
+  val config: BlockchainConfig = new BlockchainConfig {
 
     val accountCreationCost: Gas = 10
     val transferCost: Gas = 2
@@ -39,15 +44,17 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     val pTimeLimitForClaimingBlockReward: Gas = 2000
   }
 
-  //#################################### EXECUTION ENGINE INIT #################################
+  //####################### EXECUTION ENGINE & BLOCKS EXECUTOR INIT #################################
 
   val computingSpace = MockingSpace.ComputingSpace
-  val initialMemoryState: MockingSpace.MemoryState = MockingSpace.MemoryState.Singleton
+  val initialMemoryState: MS = MockingSpace.MemoryState.Singleton
   val ee = new DefaultExecutionEngine(config, computingSpace)
+  val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](ee, config)
   val random = new Random(42) //fixed seed, so tests are deterministic
-  val hashGen = new FakeHashGenerator(random)
+  val blockIdGen = new FakeHashGenerator(random)
+  val gasPrice: Ether = 1
 
-  //#################################### GLOBAL STATE INIT #################################
+  //#################################### GENESIS GLOBAL STATE #################################
 
   val account1 = 1
   val account2 = 2
@@ -79,7 +86,6 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   //#################################### TRANSACTIONS #################################
 
   val acc4_creation = Transaction.AccountCreation(
-    hash = hashGen.nextHash(),
     nonce = 0,
     sponsor = account1,
     gasPrice = 1,
@@ -88,7 +94,6 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_to_acc4_transfer = Transaction.EtherTransfer(
-    hash = hashGen.nextHash(),
     nonce = 1,
     sponsor = account1,
     gasPrice = 1,
@@ -98,7 +103,6 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val v1_bonding = Transaction.EtherTransfer(
-    hash = hashGen.nextHash(),
     nonce = 2,
     sponsor = account1,
     gasPrice = 1,
@@ -108,7 +112,6 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val v4_bonding = Transaction.EtherTransfer(
-    hash = hashGen.nextHash(),
     nonce = 3,
     sponsor = account1,
     gasPrice = 1,
@@ -118,7 +121,6 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val v1_unbonding = Transaction.EtherTransfer(
-    hash = hashGen.nextHash(),
     nonce = 4,
     sponsor = account1,
     gasPrice = 1,
@@ -128,7 +130,6 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_smart_contract_happy = Transaction.SmartContractExecution(
-    hash = hashGen.nextHash(),
     nonce = 5,
     sponsor = account1,
     gasPrice = 1,
@@ -137,16 +138,14 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_smart_contract_crashing = Transaction.SmartContractExecution(
-    hash = hashGen.nextHash(),
     nonce = 6,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
-    MockingSpace.Program.Crashing
+    MockingSpace.Program.Crashing(120)
   )
 
   val acc1_smart_contract_looping = Transaction.SmartContractExecution(
-    hash = hashGen.nextHash(),
     nonce = 7,
     sponsor = account1,
     gasPrice = 1,
@@ -156,11 +155,38 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
   //#################################### BLOCKS #################################
 
-  val block1 = NormalBlock(
-    id = FakeHashGenerator.nextHash(),
-    creator = validator1,
-    dagLevel = 1,
-    parents = IndexedSeq[]
-  )
+  val genesis = Genesis.generate("casperlabs", ee.globalStateHash(initialGlobalState))
+
+  def makeBlock(parent: Block, postStateOfParent: GlobalState[MS], tx: Transaction): (Block, GlobalState[MS]) = {
+    val pTimeOfThisBlock = parent.pTime + parent.gasBurned
+    val newBlockId = blocksExecutor.calculateBlockId(validator1, IndexedSeq(parent.id), IndexedSeq(parent.id), IndexedSeq(tx), parent.postStateHash)
+    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(postStateOfParent, pTimeOfThisBlock, newBlockId, validator1, IndexedSeq(tx))
+
+    val block = NormalBlock(
+      id = newBlockId,
+      creator = validator1,
+      dagLevel = parent.dagLevel + 1,
+      parents = IndexedSeq(parent),
+      justifications = IndexedSeq(parent),
+      transactions = IndexedSeq(tx),
+      pTime = parent.pTime + parent.gasBurned,
+      gasBurned = gasBurned,
+      preStateHash = ee.globalStateHash(postStateOfParent),
+      postStateHash = ee.globalStateHash(postState)
+    )
+
+    return (block, postState)
+  }
+
+  "casper mainchain blocks executor" must "pass the happy-chain sequence" in {
+    val (b1, gsAfterB1) = makeBlock(genesis, initialGlobalState, acc4_creation)
+    val (b2, gsAfterB2) = makeBlock(b1, gsAfterB1, acc1_to_acc4_transfer)
+    val (b3, gsAfterB3) = makeBlock(b2, gsAfterB2, v1_bonding)
+    val (b4, gsAfterB4) = makeBlock(b3, gsAfterB3, v4_bonding)
+    val (b5, gsAfterB5) = makeBlock(b4, gsAfterB4, v1_unbonding)
+    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, acc1_smart_contract_happy)
+    val (b7, gsAfterB7) = makeBlock(b6, gsAfterB6, acc1_smart_contract_crashing)
+    val (b8, gsAfterB8) = makeBlock(b7, gsAfterB7, acc1_smart_contract_looping)
+  }
 
 }

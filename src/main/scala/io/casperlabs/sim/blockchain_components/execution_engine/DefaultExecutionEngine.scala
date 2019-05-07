@@ -1,11 +1,9 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
-import java.security.MessageDigest
-
 import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ExecutionEngine}
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook.{BondingQueueAppendResult, UnbondingQueueAppendResult}
-import io.casperlabs.sim.blockchain_components.hashing.Sha256Hash
+import io.casperlabs.sim.blockchain_components.hashing.{CryptographicDigester, Hash, RealSha256Digester}
 
 /**
   * Default (minimalistic) implementation of an execution engine for proof-of-stake blockchains.
@@ -111,13 +109,48 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
     * @param gs global state
     * @return Sha-256 hash
     */
-  def globalStateHash(gs: GlobalState[MS]): Sha256Hash = {
-    val sha256Mixer = MessageDigest.getInstance("SHA-256")
-    computingSpace.
+  def globalStateHash(gs: GlobalState[MS]): Hash = {
+    val digester = new RealSha256Digester
+    computingSpace.updateDigestWithMemState(gs.memoryState, digester)
+    //todo: add processing of accounts and validators book
+    return digester.generateHash()
+  }
 
+  def updateDigest(tx: Transaction, digest: CryptographicDigester): Unit = {
+    digest.updateWith(tx.sponsor)
+    digest.updateWith(tx.nonce)
+    digest.updateWith(tx.gasPrice)
+    digest.updateWith(tx.gasLimit)
+
+    tx match {
+      case tx: Transaction.AccountCreation =>
+        digest.updateWith(0x01.toByte)
+        digest.updateWith(tx.newAccount)
+      case tx: Transaction.SmartContractExecution[P,MS] =>
+        digest.updateWith(0x02.toByte)
+        computingSpace.updateDigestWithProgram(tx.program, digest)
+      case tx: Transaction.EtherTransfer =>
+        digest.updateWith(0x03.toByte)
+        digest.updateWith(tx.targetAccount)
+        digest.updateWith(tx.value)
+      case tx: Transaction.Bonding =>
+        digest.updateWith(0x04.toByte)
+        digest.updateWith(tx.validator)
+        digest.updateWith(tx.value)
+      case tx: Transaction.Unbonding =>
+        digest.updateWith(0x05.toByte)
+        digest.updateWith(tx.validator)
+        digest.updateWith(tx.value)
+      case tx: Transaction.EquivocationSlashing =>
+        digest.updateWith(0x06.toByte)
+        digest.updateWith(tx.victim)
+        digest.updateWith(tx.evidence._1.bytes)
+        digest.updateWith(tx.evidence._2.bytes)
+    }
   }
 
 //################################################ PER-TRANSACTION-TYPE SPECIFIC PARTS #####################################################################
+
 
   private def executeAccountCreation(gs: GlobalState[MS], tx: Transaction.AccountCreation): (GlobalState[MS], TransactionExecutionResult) = {
     assert(! gs.accounts.contains(tx.newAccount))

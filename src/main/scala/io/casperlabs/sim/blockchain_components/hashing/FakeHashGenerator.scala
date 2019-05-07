@@ -7,5 +7,5 @@ import scala.util.Random
   * Blockchains are generally full of hashes here and there, and we want the simulated blockchain to give the feeling of a real one.
   */
 class FakeHashGenerator(random: Random) {
-  def nextHash(): HashValue = HashValue(random.nextLong())
+  def nextHash(): FakeHash = FakeHash(random.nextLong())
 }

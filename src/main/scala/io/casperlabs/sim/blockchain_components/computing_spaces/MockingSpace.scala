@@ -2,18 +2,19 @@ package io.casperlabs.sim.blockchain_components.computing_spaces
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Trivial computing space extended so that desired transaction execution and cost is encoded inside the transaction.
   */
 object MockingSpace {
 
-  sealed abstract class MemoryState {}
+  sealed abstract class MemoryState
   object MemoryState {
     case object Singleton extends MemoryState
   }
 
-  sealed abstract class Program {}
+  sealed abstract class Program
   object Program {
     case class Happy(gasToBeUsed: Gas) extends Program
     case object Looping extends Program
@@ -40,6 +41,22 @@ object MockingSpace {
         case Program.Crashing(gas) => ProgramResult.Crash(gas)
       }
 
+    override def updateDigestWithMemState(ms: MemoryState, digest: CryptographicDigester): Unit = {
+      //do nothing because there is only one memory state
+    }
+
+    override def updateDigestWithProgram(p: Program, digest: CryptographicDigester): Unit = {
+      p match {
+        case Program.Happy(gas) =>
+          digest.updateWith(0x01.toByte)
+          digest.updateWith(gas)
+        case Program.Looping =>
+          digest.updateWith(0x02.toByte)
+        case Program.Crashing(gas) =>
+          digest.updateWith(0x03.toByte)
+          digest.updateWith(gas)
+      }
+    }
   }
 
 

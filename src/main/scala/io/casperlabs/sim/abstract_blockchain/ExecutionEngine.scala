@@ -1,8 +1,7 @@
 package io.casperlabs.sim.abstract_blockchain
 
-import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
 import io.casperlabs.sim.blockchain_components.execution_engine._
-import io.casperlabs.sim.blockchain_components.hashing.Sha256Hash
+import io.casperlabs.sim.blockchain_components.hashing.{CryptographicDigester, Hash}
 
 /**
   * Abstraction of transaction processors.
@@ -25,6 +24,8 @@ trait ExecutionEngine[MS, T] {
     * Calculates Sha256 hash of a given global state.
     * (This may be fake or real, depending on the implementation)
     */
-  def globalStateHash(gs: GlobalState[MS]): Sha256Hash
+  def globalStateHash(gs: GlobalState[MS]): Hash
+
+  def updateDigest(tx: T, digest: CryptographicDigester)
 
 }
