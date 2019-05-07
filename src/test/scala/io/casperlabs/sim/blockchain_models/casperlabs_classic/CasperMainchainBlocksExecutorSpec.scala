@@ -29,7 +29,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     val slashingCost: Gas = 1
 
     val bondingDelay: Gas = 200
-    val unbondingDelay: Gas = 200
+    val unbondingDelay: Gas = 100
     val maxStake: Ether = 1000
     val minStake: Ether = 5
     val minBondingUnbondingRequest: Ether = 50
@@ -101,7 +101,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     gasPrice = 1,
     gasLimit = 200,
     targetAccount = account4,
-    value = 60
+    value = 70
   )
 
   val v1_bonding = Transaction.Bonding(
@@ -117,7 +117,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     nonce = 0,
     sponsor = account4,
     gasPrice = 1,
-    gasLimit = 200,
+    gasLimit = 50,
     validator4,
     value = 50
   )
@@ -127,11 +127,20 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
-    MockingSpace.Program.Happy(201)
+    MockingSpace.Program.Happy(200)
   )
 
-  val v1_unbonding = Transaction.Unbonding(
+  val acc1_smart_contract_happy2 = Transaction.SmartContractExecution(
     nonce = 4,
+    sponsor = account1,
+    gasPrice = 1,
+    gasLimit = 200,
+    MockingSpace.Program.Happy(1)
+  )
+
+
+  val v1_unbonding = Transaction.Unbonding(
+    nonce = 5,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
@@ -141,7 +150,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
 
   val acc1_smart_contract_crashing = Transaction.SmartContractExecution(
-    nonce = 5,
+    nonce = 6,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
@@ -149,7 +158,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_smart_contract_looping = Transaction.SmartContractExecution(
-    nonce = 6,
+    nonce = 7,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
@@ -188,7 +197,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
     val (b1, gsAfterB1) = makeBlock(genesis, initialGlobalState, acc4_creation)
     val (b2, gsAfterB2) = makeBlock(b1, gsAfterB1, acc1_to_acc4_transfer)
-    gsAfterB2.accountBalance(account4) shouldBe 60L
+    gsAfterB2.accountBalance(account4) shouldBe 70L
 
     val (b3, gsAfterB3) = makeBlock(b2, gsAfterB2, v1_bonding)
     val (b4, gsAfterB4) = makeBlock(b3, gsAfterB3, v4_bonding)
@@ -198,21 +207,24 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     v1AfterB4.bondingEscrow shouldBe 50L
 
     val (b5, gsAfterB5) = makeBlock(b4, gsAfterB4, acc1_smart_contract_happy)
-    initialGlobalState.numberOfActiveValidators shouldBe 3
-    val v1AfterB5 = gsAfterB5.validatorsBook.getInfoAbout(validator1)
-    v1AfterB5.stake shouldBe 550L
-    v1AfterB5.bondingEscrow shouldBe 0L
-    val v4AfterB5 = gsAfterB5.validatorsBook.getInfoAbout(validator4)
-    v4AfterB5.stake shouldBe 50L
+    gsAfterB5.numberOfActiveValidators shouldBe 2
 
-    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, v1_unbonding)
+    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, acc1_smart_contract_happy2)
+    gsAfterB6.numberOfActiveValidators shouldBe 3
     val v1AfterB6 = gsAfterB6.validatorsBook.getInfoAbout(validator1)
-    v1AfterB6.stake shouldBe 0L
-    v1AfterB6.bondingEscrow shouldBe 550L
+    v1AfterB6.stake shouldBe 550L
+    v1AfterB6.bondingEscrow shouldBe 0L
+    val v4AfterB6 = gsAfterB6.validatorsBook.getInfoAbout(validator4)
+    v4AfterB6.stake shouldBe 50L
 
-    val (b7, gsAfterB7) = makeBlock(b6, gsAfterB6, acc1_smart_contract_crashing)
+    val (b7, gsAfterB7) = makeBlock(b6, gsAfterB6, v1_unbonding)
+    val v1AfterB7 = gsAfterB7.validatorsBook.getInfoAbout(validator1)
+    v1AfterB7.stake shouldBe 0L
+    v1AfterB7.unbondingEscrow shouldBe 550L
 
-    val (b8, gsAfterB8) = makeBlock(b7, gsAfterB7, acc1_smart_contract_looping)
+    val (b8, gsAfterB8) = makeBlock(b7, gsAfterB7, acc1_smart_contract_crashing)
+
+    val (b9, gsAfterB9) = makeBlock(b8, gsAfterB8, acc1_smart_contract_looping)
   }
 
 }

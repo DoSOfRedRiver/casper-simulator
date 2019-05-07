@@ -42,11 +42,11 @@ class ValidatorsBook private (
       return (this, BondingQueueAppendResult.StakeChangeTooLarge)
     if (amount < config.minBondingUnbondingRequest)
       return (this, BondingQueueAppendResult.StakeChangeTooSmall)
+    if (currentStakeOf(validator) == 0 && amount < config.minStake)
+      return (this, BondingQueueAppendResult.EffectiveStakeBelowMin)
     val totalBondingAmountQueuedForThisValidator = bondingQueue.filter(item => item.validator == validator).map(item => item.amount).sum
     if (totalBondingAmountQueuedForThisValidator + amount > config.maxStake)
       return (this, BondingQueueAppendResult.EffectiveStakeAboveMax)
-    if (totalBondingAmountQueuedForThisValidator + amount < config.maxStake)
-      return (this, BondingQueueAppendResult.EffectiveStakeBelowMin)
 
     //todo: add missing checks based on the "sliding window" principle
 
@@ -69,7 +69,7 @@ class ValidatorsBook private (
   def addUnbondingReqToWaitingQueue(validator: ValidatorId, amount: Ether, requestTime: Gas, config: BlockchainConfig): (ValidatorsBook, UnbondingQueueAppendResult) = {
     require(requestTime >= lastPTimeSeen)
 
-    if (amount > config.maxBondingRequest)
+    if (amount > config.maxUnbondingRequest)
       return (this, UnbondingQueueAppendResult.StakeChangeTooLarge)
     if (amount < config.minBondingUnbondingRequest)
       return (this, UnbondingQueueAppendResult.StakeChangeTooSmall)
@@ -117,8 +117,6 @@ class ValidatorsBook private (
     require(pTime >= lastPTimeSeen)
     //finding requests ready to be processed
     val (readyToExecute, stillWaiting) = bondingQueue.span(item => item.triggeringTime < pTime)
-    //calculating the number of new validators that will show up in the map of validators
-    val numberOfAddedValidators = readyToExecute.count(item => !validators.contains(item.validator))
     //total new stake
     val addedTotalStake = readyToExecute.map(item => item.amount).sum
 
@@ -135,7 +133,7 @@ class ValidatorsBook private (
       blocksRewardEscrow,
       bondingQueue = stillWaiting,
       unbondingQueue,
-      cachedNumberOfActiveValidators + numberOfAddedValidators,
+      cachedNumberOfActiveValidators = validatorsMapTmp count {case (v,s) => s.stake > 0},
       cachedTotalStake + addedTotalStake,
       pTime
     )
