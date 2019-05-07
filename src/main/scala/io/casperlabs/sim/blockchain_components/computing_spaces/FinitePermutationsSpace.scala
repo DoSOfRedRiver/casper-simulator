@@ -2,6 +2,7 @@ package io.casperlabs.sim.blockchain_components.computing_spaces
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Computing space where memory states are elements of {0,1, ..., n-1}.
@@ -28,6 +29,10 @@ object FinitePermutationsSpace {
     }
 
     override def execute(program: Program, memState: MemoryState, gasLimit: Gas): ProgramResult = ProgramResult.Success(program.permutation(memState), 1)
+
+    override def updateDigestWithMemState(ms: MemoryState, digest: CryptographicDigester): Unit = digest.updateWith(ms)
+
+    override def updateDigestWithProgram(p: Program, digest: CryptographicDigester): Unit = for (x <- p.permutation) digest.updateWith(x)
   }
 
 }

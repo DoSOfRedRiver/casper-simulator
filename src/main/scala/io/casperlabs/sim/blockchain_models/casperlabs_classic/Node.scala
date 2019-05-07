@@ -1,13 +1,13 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.blockchain_components.execution_engine.{Gas, Transaction}
-import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
+import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
+import io.casperlabs.sim.blockchain_components.computing_spaces.{BinaryArraySpace, ComputingSpace}
+import io.casperlabs.sim.blockchain_components.execution_engine.{DefaultExecutionEngine, Gas, GlobalState, Transaction}
 import io.casperlabs.sim.blockchain_components.{Discovery, DoublyLinkedDag, Gossip}
 import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
 import io.casperlabs.sim.simulation_framework._
 
 import scala.collection.mutable
-import scala.util.Random
 
 class Node(
   override val id: AgentId,
@@ -16,8 +16,14 @@ class Node(
   g: Gossip[AgentId, AgentId, Node.Comm],
   genesis: Block,
   proposeStrategy: Node.ProposeStrategy,
-  random: Random
+  config: BlockchainConfig
 ) extends Agent[Node.Comm, Node.Operation, Node.Propose.type] {
+
+  type MS = BinaryArraySpace.MemoryState
+  type P = BinaryArraySpace.Program
+  type CS = ComputingSpace[P,MS]
+  type GS = GlobalState[MS]
+
   private val deployBuffer: mutable.HashSet[Node.Operation.Deploy] = mutable.HashSet.empty
   private val blockBuffer: mutable.HashSet[Block] = mutable.HashSet.empty
   // TODO: share DAG structure among nodes
@@ -25,7 +31,11 @@ class Node(
   private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesis)
   // TODO: do this without a var
   private var lastProposeTime: Timepoint = Timepoint(0L)
-  private val fakeHashGenerator = new FakeHashGenerator(random)
+
+  val computingSpace: CS = BinaryArraySpace.ComputingSpace
+  val initialMemoryState: MS = computingSpace.initialState
+  val ee = new DefaultExecutionEngine(config, computingSpace)
+  val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](ee, config)
 
   def getLastProposedTime: Timepoint = lastProposeTime
 
@@ -90,18 +100,34 @@ class Node(
     )
     // TODO: use execution engine to process deploys
     val pTimeOfThisBlock: Gas = 1 //todo: actual value of p-time should be provided here
-    val gasBurned: Gas = 1 //todo: actual value of gas burned in this block should be provided here
     val txns = deployBuffer.toIndexedSeq.map(_.t)
     deployBuffer.clear()
+
+
+    //todo: replace main parent post-state hash with real hash of merged pre-state
+    //todo: clean-up separation between agent-id and validator-id
+
+    val parentsIds = parents.map(b => b.id)
+    val justifications = latestMessages.values.toIndexedSeq
+    val justificationsIds = justifications.map(b => b.id)
+    val newBlockId = blocksExecutor.calculateBlockId(id, parentsIds, justificationsIds, txns, parents(0).postStateHash)
+
+    //todo: we need a real pre-state here
+    val preState: GlobalState[MS] = GlobalState.empty(computingSpace)
+
+    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(preState, pTimeOfThisBlock, newBlockId, id, txns)
+
     val block = NormalBlock(
-      fakeHashGenerator.nextHash(),
-      id,
-      parents.map(_.dagLevel).max + 1,
+      id = newBlockId,
+      creator = this.id,
+      dagLevel = parents.map(_.dagLevel).max + 1,
       parents,
-      latestMessages.values.toIndexedSeq,
+      justifications,
       txns,
       pTimeOfThisBlock,
-      gasBurned
+      gasBurned,
+      preStateHash = ee.globalStateHash(preState),
+      postStateHash = ee.globalStateHash(postState)
     )
     handleBlock(block)
   }

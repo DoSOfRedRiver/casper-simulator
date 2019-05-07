@@ -1,7 +1,7 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
-import io.casperlabs.sim.blockchain_components.hashing.Sha256Hash
+import io.casperlabs.sim.blockchain_components.hashing.Hash
 
 /**
   * Representation of the state of blockchain computer.

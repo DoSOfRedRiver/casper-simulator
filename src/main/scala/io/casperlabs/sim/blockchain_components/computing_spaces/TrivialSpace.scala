@@ -1,9 +1,8 @@
 package io.casperlabs.sim.blockchain_components.computing_spaces
 
-import java.security.MessageDigest
-
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Trivial computing space.
@@ -29,8 +28,12 @@ object TrivialSpace {
 
     override def execute(program: Program, on: MemoryState, gasLimit: Gas): ProgramResult = ProgramResult.Success(MemoryState.Singleton, 1)
 
-    override def updateDigest(ms: MemoryState, digest: MessageDigest): Unit = {
-      //do nothing because there is only one state
+    override def updateDigestWithMemState(ms: MemoryState, digest: CryptographicDigester): Unit = {
+      //do nothing because there is only one memory state
+    }
+
+    override def updateDigestWithProgram(p: Program, digest: CryptographicDigester): Unit = {
+      //do nothing updateDigestWithProgram there is only one program
     }
   }
 

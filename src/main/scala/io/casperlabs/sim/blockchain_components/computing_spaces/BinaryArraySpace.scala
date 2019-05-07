@@ -2,6 +2,7 @@ package io.casperlabs.sim.blockchain_components.computing_spaces
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Computing space that mimics a scaled-down version of what is found inside a typical blockchain
@@ -42,6 +43,21 @@ object BinaryArraySpace {
     override def initialState: MemoryState = scala.collection.immutable.BitSet.empty
 
     override def compose(p1: Program, p2: Program): Program = Program.Composite(p1, p2)
+
+    override def updateDigestWithMemState(ms: MemoryState, digest: CryptographicDigester): Unit = {
+      for (element <- ms)
+        digest.updateWith(element)
+    }
+
+    override def updateDigestWithProgram(program: Program, digest: CryptographicDigester): Unit = {
+      digest.updateWith(0x01.toByte)
+      program match {
+        case p: Program.Simple => for (st <- p.statements) st.updateDigest(digest)
+        case p: Program.Composite => for (sub <- p.subprograms) this.updateDigestWithProgram(sub, digest)
+        case Program.Empty => digest.updateWith(0x03.toByte)
+      }
+      digest.updateWith(0x02.toByte)
+    }
 
     override def execute(program: Program, memState: MemoryState, gasLimit: Gas): BinaryArraySpace.ComputingSpace.ProgramResult =
       program match {
@@ -136,37 +152,82 @@ object BinaryArraySpace {
   }
 
   sealed abstract class Statement {
+    def updateDigest(digest: CryptographicDigester)
   }
 
   object Statement {
     //sets the accumulator to zero
-    case object ClearAcc extends Statement
+    case object ClearAcc extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = digest.updateWith(StatementCode.clearAcc)
+    }
 
     //reads memory at given address, adds to the accumulator (modulo 2) and stores the result the accumulator
-    case class AddToAcc(address: CellAddress) extends Statement
+    case class AddToAcc(address: CellAddress) extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = {
+        digest.updateWith(StatementCode.addToAcc)
+        digest.updateWith(address)
+      }
+    }
 
     //stores the value of 'accumulator' at the specified address
-    case class StoreAcc(address: CellAddress) extends Statement
+    case class StoreAcc(address: CellAddress) extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = {
+        digest.updateWith(StatementCode.storeAcc)
+        digest.updateWith(address)
+      }
+    }
 
     //writes the value 'value' at given address
-    case class Write(address: CellAddress, value: Int) extends Statement
+    case class Write(address: CellAddress, value: Int) extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = {
+        digest.updateWith(StatementCode.write)
+        digest.updateWith(address)
+        digest.updateWith(value)
+      }
+    }
 
     //adds 1 (modulo 2) to the value stored at given address
-    case class Flip(address: CellAddress) extends Statement
+    case class Flip(address: CellAddress) extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = {
+        digest.updateWith(StatementCode.flip)
+        digest.updateWith(address)
+      }
+    }
 
     //reads the value at address; terminates the program abruptly if the value does not equal to 'value'
-    case class Assert(address: CellAddress, value: Int) extends Statement
+    case class Assert(address: CellAddress, value: Int) extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = {
+        digest.updateWith(StatementCode.assert)
+        digest.updateWith(address)
+        digest.updateWith(value)
+      }
+    }
 
     //conditional jump forward: checks the value at address 'condition' - if 0 then program executes next instruction, if 1 then we skip specified number of instructions
-    case class Branch(conditionAddress: CellAddress, goto: Int) extends Statement
+    case class Branch(conditionAddress: CellAddress, goto: Int) extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = {
+        digest.updateWith(StatementCode.branch)
+        digest.updateWith(conditionAddress)
+        digest.updateWith(goto)
+      }
+    }
 
     //conditional jump backwards: if accumulator contains 1 - we jump back specified number of instructions
-    case class Loop(goto: Int) extends Statement
+    case class Loop(goto: Int) extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = {
+        digest.updateWith(StatementCode.loop)
+        digest.updateWith(goto)
+      }
+    }
 
-    case object Nop extends Statement
+    case object Nop extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = digest.updateWith(StatementCode.nop)
+    }
 
     //graceful termination
-    case object Exit extends Statement
+    case object Exit extends Statement {
+      override def updateDigest(digest: CryptographicDigester): Unit = digest.updateWith(StatementCode.exit)
+    }
   }
 
   sealed abstract class StatementCode {

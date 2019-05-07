@@ -1,9 +1,7 @@
 package io.casperlabs.sim.blockchain_components.computing_spaces
 
-import java.security.MessageDigest
-
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
-import io.casperlabs.sim.blockchain_components.hashing.Sha256Hash
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Abstraction of "programming" layer of a blockchain, so the part where smart contracts live.
@@ -49,9 +47,15 @@ trait ComputingSpace[Program, MemoryState] {
   def execute(program: Program, memState: MemoryState, gasLimit: Gas): ProgramResult
 
   /**
-    * Appends the representation of given memory state to the on-going calculation of SHA-256 hash.
+    * Appends the binary representation of given memory state to the on-going calculation of SHA-256 hash.
     */
-  def updateDigest(ms: MemoryState, digest: MessageDigest)
+  def updateDigestWithMemState(ms: MemoryState, digest: CryptographicDigester)
+
+  /**
+    * Appends the binary representation of given program to the on-going calculation of SHA-256 hash.
+    */
+  def updateDigestWithProgram(p: Program, digest: CryptographicDigester)
+
 
   abstract class ProgramResult
 

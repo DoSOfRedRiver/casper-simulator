@@ -1,9 +1,8 @@
 package io.casperlabs.sim.blockchain_components.computing_spaces
 
-import java.security.MessageDigest
-
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace => ComputingSpaceAPI}
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Minimalistic computing space, where there are only two memory states: 0 and 1.
@@ -47,12 +46,26 @@ object ZeroOneSpace {
       }
     }
 
-    override def updateDigest(ms: MemoryState, digest: MessageDigest): Unit = {
+    override def updateDigestWithMemState(ms: MemoryState, digest: CryptographicDigester): Unit = {
       ms match {
-        case MemoryState.Zero => digest.update(0.toByte)
-        case MemoryState.One => digest.update(1.toByte)
+        case MemoryState.Zero => digest.updateWith(0.toByte)
+        case MemoryState.One => digest.updateWith(1.toByte)
       }
     }
+
+    override def updateDigestWithProgram(p: Program, digest: CryptographicDigester): Unit = {
+      p.valueAtZero match {
+        case Some(MemoryState.Zero) => digest.updateWith(0x01.toByte)
+        case Some(MemoryState.One) => digest.updateWith(0x02.toByte)
+        case None => digest.updateWith(0x03.toByte)
+      }
+      p.valueAtOne match {
+        case Some(MemoryState.Zero) => digest.updateWith(0x04.toByte)
+        case Some(MemoryState.One) => digest.updateWith(0x05.toByte)
+        case None => digest.updateWith(0x06.toByte)
+      }
+    }
+
   }
 
 }

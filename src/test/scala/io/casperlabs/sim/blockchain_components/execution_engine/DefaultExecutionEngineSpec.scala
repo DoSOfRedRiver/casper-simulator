@@ -79,7 +79,6 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   "execution engine" must "execute account creation and sending some tokens to it" in {
     val tx1 = Transaction.AccountCreation(
-      hash = hashGen.nextHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -87,7 +86,6 @@ class DefaultExecutionEngineSpec extends BaseSpec {
       newAccount = account4
     )
     val tx2 = Transaction.EtherTransfer(
-      hash = hashGen.nextHash(),
       nonce = 1,
       sponsor = account1,
       gasPrice = 1,
