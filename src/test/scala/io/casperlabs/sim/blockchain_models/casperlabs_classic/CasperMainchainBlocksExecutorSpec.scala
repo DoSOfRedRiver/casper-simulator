@@ -34,6 +34,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     val minStake: Ether = 5
     val minBondingUnbondingRequest: Ether = 50
     val maxBondingRequest: Ether = 500
+    val maxUnbondingRequest: Ether = 2000
     val bondingSlidingWindowSize: Gas = 500
     val unbondingSlidingWindowSize: Gas = 500
     val bondingTrafficAsNumberOfRequestsLimit: Int = 5
@@ -64,6 +65,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   val validator1 = 101
   val validator2 = 102
   val validator3 = 103
+  val validator4 = 104
 
   val accountsRegistry = new AccountsRegistry(
     Map (
@@ -99,46 +101,47 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     gasPrice = 1,
     gasLimit = 200,
     targetAccount = account4,
-    value = 50
+    value = 60
   )
 
-  val v1_bonding = Transaction.EtherTransfer(
+  val v1_bonding = Transaction.Bonding(
     nonce = 2,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
-    targetAccount = account4,
+    validator = validator1,
     value = 50
   )
 
-  val v4_bonding = Transaction.EtherTransfer(
-    nonce = 3,
-    sponsor = account1,
+  val v4_bonding = Transaction.Bonding(
+    nonce = 0,
+    sponsor = account4,
     gasPrice = 1,
     gasLimit = 200,
-    targetAccount = account4,
-    value = 50
-  )
-
-  val v1_unbonding = Transaction.EtherTransfer(
-    nonce = 4,
-    sponsor = account1,
-    gasPrice = 1,
-    gasLimit = 200,
-    targetAccount = account4,
+    validator4,
     value = 50
   )
 
   val acc1_smart_contract_happy = Transaction.SmartContractExecution(
-    nonce = 5,
+    nonce = 3,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
-    MockingSpace.Program.Happy(150)
+    MockingSpace.Program.Happy(201)
   )
 
+  val v1_unbonding = Transaction.Unbonding(
+    nonce = 4,
+    sponsor = account1,
+    gasPrice = 1,
+    gasLimit = 200,
+    validator = validator1,
+    value = 550
+  )
+
+
   val acc1_smart_contract_crashing = Transaction.SmartContractExecution(
-    nonce = 6,
+    nonce = 5,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
@@ -146,7 +149,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_smart_contract_looping = Transaction.SmartContractExecution(
-    nonce = 7,
+    nonce = 6,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
@@ -179,13 +182,36 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   }
 
   "casper mainchain blocks executor" must "pass the happy-chain sequence" in {
+    initialGlobalState.numberOfActiveValidators shouldBe 2
+    initialGlobalState.accountBalance(account1) shouldBe 1000L
+    initialGlobalState.validatorsBook.currentStakeOf(validator1) shouldBe 500L
+
     val (b1, gsAfterB1) = makeBlock(genesis, initialGlobalState, acc4_creation)
     val (b2, gsAfterB2) = makeBlock(b1, gsAfterB1, acc1_to_acc4_transfer)
+    gsAfterB2.accountBalance(account4) shouldBe 60L
+
     val (b3, gsAfterB3) = makeBlock(b2, gsAfterB2, v1_bonding)
     val (b4, gsAfterB4) = makeBlock(b3, gsAfterB3, v4_bonding)
-    val (b5, gsAfterB5) = makeBlock(b4, gsAfterB4, v1_unbonding)
-    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, acc1_smart_contract_happy)
+
+    val v1AfterB4 = gsAfterB4.validatorsBook.getInfoAbout(validator1)
+    v1AfterB4.stake shouldBe 500L
+    v1AfterB4.bondingEscrow shouldBe 50L
+
+    val (b5, gsAfterB5) = makeBlock(b4, gsAfterB4, acc1_smart_contract_happy)
+    initialGlobalState.numberOfActiveValidators shouldBe 3
+    val v1AfterB5 = gsAfterB5.validatorsBook.getInfoAbout(validator1)
+    v1AfterB5.stake shouldBe 550L
+    v1AfterB5.bondingEscrow shouldBe 0L
+    val v4AfterB5 = gsAfterB5.validatorsBook.getInfoAbout(validator4)
+    v4AfterB5.stake shouldBe 50L
+
+    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, v1_unbonding)
+    val v1AfterB6 = gsAfterB6.validatorsBook.getInfoAbout(validator1)
+    v1AfterB6.stake shouldBe 0L
+    v1AfterB6.bondingEscrow shouldBe 550L
+
     val (b7, gsAfterB7) = makeBlock(b6, gsAfterB6, acc1_smart_contract_crashing)
+
     val (b8, gsAfterB8) = makeBlock(b7, gsAfterB7, acc1_smart_contract_looping)
   }
 

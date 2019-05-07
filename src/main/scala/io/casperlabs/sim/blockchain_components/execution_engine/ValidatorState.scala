@@ -35,13 +35,13 @@ private[execution_engine] class ValidatorState private (
   def increaseStake(delta: Ether): ValidatorState = {
     assert (bondingEscrow - delta >= 0)
     assert (delta > 0)
-    new ValidatorState(id, account, stake + delta, bondingEscrow - delta, unbondingEscrow, unconsumedBlockRewards)
+    return new ValidatorState(id, account, stake + delta, bondingEscrow - delta, unbondingEscrow, unconsumedBlockRewards)
   }
 
   def decreaseStake(delta: Ether): ValidatorState = {
     assert (stake - delta >= 0)
     assert (delta > 0)
-    new ValidatorState(id, account, stake - delta, bondingEscrow, unbondingEscrow + delta, unconsumedBlockRewards)
+    return new ValidatorState(id, account, stake - delta, bondingEscrow, unbondingEscrow + delta, unconsumedBlockRewards)
   }
 
 
