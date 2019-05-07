@@ -53,6 +53,8 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
       case tx: Transaction.EquivocationSlashing => this.executeEquivocationSlashing(gs,tx)
     }
 
+//    println(s"ee: transaction: $transaction txResult=$txResult ")
+
     //if gas limit was exceeded, we ignore any other possible error
     if (txResult.gasBurned > transaction.gasLimit) {
       val updatedGS = GlobalState[MS](
