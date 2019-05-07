@@ -57,7 +57,7 @@ class CasperMainchainBlocksExecutor[CS, P, MS](executionEngine: ExecutionEngine[
   private def executeTransactions(preState: GlobalState[MS], pTime: Gas, transactions: IndexedSeq[Transaction], effectiveGasPrice: Ether): (GlobalState[MS], Gas) =
     transactions.foldLeft((preState, 0L)) { case (acc, transaction) =>
       val (gs, executionResult) = executionEngine.executeTransaction(acc._1, transaction, effectiveGasPrice, pTime)
-      println(s"transaction: $transaction (account,nonce)=(${transaction.sponsor},${transaction.nonce}) txResult=$executionResult")
+      println(s"(ptime=$pTime) transaction: $transaction (account,nonce)=(${transaction.sponsor},${transaction.nonce}) txResult=$executionResult")
       //todo: recording / logging of execution result
       (gs, acc._2 + executionResult.gasBurned)
     }

@@ -190,26 +190,34 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     return (block, postState)
   }
 
-  "casper mainchain blocks executor" must "pass the happy-chain sequence" in {
+  trait CommonSetup {
+    //we are building a simple blockdag here, which is actually a chain (every block has only one parent)
+
+    val (b1, gsAfterB1) = makeBlock(genesis, initialGlobalState, acc4_creation)
+    val (b2, gsAfterB2) = makeBlock(b1, gsAfterB1, acc1_to_acc4_transfer)
+    val (b3, gsAfterB3) = makeBlock(b2, gsAfterB2, v1_bonding)
+    val (b4, gsAfterB4) = makeBlock(b3, gsAfterB3, v4_bonding)
+    val (b5, gsAfterB5) = makeBlock(b4, gsAfterB4, acc1_smart_contract_happy)
+    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, acc1_smart_contract_happy2)
+    val (b7, gsAfterB7) = makeBlock(b6, gsAfterB6, v1_unbonding)
+    val (b8, gsAfterB8) = makeBlock(b7, gsAfterB7, acc1_smart_contract_crashing)
+    val (b9, gsAfterB9) = makeBlock(b8, gsAfterB8, acc1_smart_contract_looping)
+
+  }
+
+  "casper mainchain blocks executor" must "pass the bonding-unbonding sequence with interlacing requests" in new CommonSetup {
     initialGlobalState.numberOfActiveValidators shouldBe 2
     initialGlobalState.accountBalance(account1) shouldBe 1000L
     initialGlobalState.validatorsBook.currentStakeOf(validator1) shouldBe 500L
 
-    val (b1, gsAfterB1) = makeBlock(genesis, initialGlobalState, acc4_creation)
-    val (b2, gsAfterB2) = makeBlock(b1, gsAfterB1, acc1_to_acc4_transfer)
     gsAfterB2.accountBalance(account4) shouldBe 70L
-
-    val (b3, gsAfterB3) = makeBlock(b2, gsAfterB2, v1_bonding)
-    val (b4, gsAfterB4) = makeBlock(b3, gsAfterB3, v4_bonding)
 
     val v1AfterB4 = gsAfterB4.validatorsBook.getInfoAbout(validator1)
     v1AfterB4.stake shouldBe 500L
     v1AfterB4.bondingEscrow shouldBe 50L
 
-    val (b5, gsAfterB5) = makeBlock(b4, gsAfterB4, acc1_smart_contract_happy)
     gsAfterB5.numberOfActiveValidators shouldBe 2
 
-    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, acc1_smart_contract_happy2)
     gsAfterB6.numberOfActiveValidators shouldBe 3
     val v1AfterB6 = gsAfterB6.validatorsBook.getInfoAbout(validator1)
     v1AfterB6.stake shouldBe 550L
@@ -217,14 +225,28 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     val v4AfterB6 = gsAfterB6.validatorsBook.getInfoAbout(validator4)
     v4AfterB6.stake shouldBe 50L
 
-    val (b7, gsAfterB7) = makeBlock(b6, gsAfterB6, v1_unbonding)
+    gsAfterB7.numberOfActiveValidators shouldBe 2
     val v1AfterB7 = gsAfterB7.validatorsBook.getInfoAbout(validator1)
     v1AfterB7.stake shouldBe 0L
     v1AfterB7.unbondingEscrow shouldBe 550L
 
-    val (b8, gsAfterB8) = makeBlock(b7, gsAfterB7, acc1_smart_contract_crashing)
 
-    val (b9, gsAfterB9) = makeBlock(b8, gsAfterB8, acc1_smart_contract_looping)
+    gsAfterB9.numberOfActiveValidators shouldBe 2
+    val v1AfterB9 = gsAfterB9.validatorsBook.getInfoAbout(validator1)
+    v1AfterB9.stake shouldBe 0L
+    v1AfterB9.unbondingEscrow shouldBe 0L
   }
 
+  it must "correctly calculate block rewards" in {
+    //todo: add proper assertions
+    val (b1, gsAfterB1) = makeBlock(genesis, initialGlobalState, acc4_creation)
+    val (b2, gsAfterB2) = makeBlock(b1, gsAfterB1, acc1_to_acc4_transfer)
+    val (b3, gsAfterB3) = makeBlock(b2, gsAfterB2, v1_bonding)
+    val (b4, gsAfterB4) = makeBlock(b3, gsAfterB3, v4_bonding)
+    val (b5, gsAfterB5) = makeBlock(b4, gsAfterB4, acc1_smart_contract_happy)
+    val (b6, gsAfterB6) = makeBlock(b5, gsAfterB5, acc1_smart_contract_happy2)
+    val (b7, gsAfterB7) = makeBlock(b6, gsAfterB6, v1_unbonding)
+    val (b8, gsAfterB8) = makeBlock(b7, gsAfterB7, acc1_smart_contract_crashing)
+    val (b9, gsAfterB9) = makeBlock(b8, gsAfterB8, acc1_smart_contract_looping)
+  }
 }

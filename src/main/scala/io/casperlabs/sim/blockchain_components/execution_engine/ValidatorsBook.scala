@@ -147,7 +147,7 @@ class ValidatorsBook private (
     * @param pTime the blocktime of "now" - here is means that all queue entries with a triggering time less-or-equal than pTime will get executed now
     * @return (updated validators book, ether transfers to be done)
     */
-  def processUnbondingQueueUpToCurrentTime(pTime: Gas): (ValidatorsBook, Map[ValidatorId, Ether]) = {
+  def processUnbondingQueueUpToCurrentTime(pTime: Gas): (ValidatorsBook, Map[Account, Ether]) = {
     require(pTime >= lastPTimeSeen)
     //finding requests ready to be processed
     val (readyToExecute, stillWaiting) = unbondingQueue.span(item => item.triggeringTime < pTime)
@@ -176,7 +176,7 @@ class ValidatorsBook private (
       pTime
     )
 
-    return (resultingBook, transfersMap)
+    return (resultingBook, transfersMap map {case (vid, ether) => (validators(vid).account, ether)})
   }
 
 
