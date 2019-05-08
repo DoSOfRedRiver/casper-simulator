@@ -16,9 +16,9 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
     val accountCreationCost: Gas = 10
     val transferCost: Gas = 2
-    val successfulBondingCost: Gas = 20
+    val successfulBondingCost: Gas = 19
     val refusedBondingCost: Gas = 2
-    val successfulUnbondingCost: Gas = 20
+    val successfulUnbondingCost: Gas = 21
     val refusedUnbondingCost: Gas = 2
     val slashingCost: Gas = 1
 
@@ -61,7 +61,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
   val accountsRegistry = new AccountsRegistry(
     Map(
       account1 -> AccountState(nonce = 0, balance = 1000L),
-      account2 -> AccountState(nonce = 0, balance = 0L),
+      account2 -> AccountState(nonce = 0, balance = 200L),
       account3 -> AccountState(nonce = 0, balance = 0L),
     )
   )
@@ -104,28 +104,130 @@ class DefaultExecutionEngineSpec extends BaseSpec {
     gs2.accountBalance(account4) shouldEqual 50L
   }
 
-  it must "handle successful smart contract execution" in {
-    //todo
+  it must "handle smart contract execution (successful case)" in {
+    val tx = Transaction.SmartContractExecution(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 500,
+      MockingSpace.Program.Happy(42)
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldEqual TransactionExecutionResult.Success(42)
   }
 
-  it must "handle crashing smart contract execution" in {
-    //todo
+  it must "handle smart contract execution (crashing by unhandled exception)" in {
+    val tx = Transaction.SmartContractExecution(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 500,
+      MockingSpace.Program.Crashing(42)
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldEqual TransactionExecutionResult.SmartContractUnhandledException(42)
   }
 
-  it must "handle gas exceeded error in smart contract execution" in {
-    //todo
+  it must "handle smart contract execution (crashing by gas exceeded)" in {
+    val tx = Transaction.SmartContractExecution(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 500,
+      MockingSpace.Program.Looping
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldEqual TransactionExecutionResult.GasLimitExceeded(500)
   }
 
-  it must "discover ether insufficient for covering gas limit" in {
-    //todo
+  it must "handle smart contract execution (crashing by account balance insufficient to cover gas limit)" in {
+    val tx = Transaction.SmartContractExecution(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 1001,
+      MockingSpace.Program.Happy(10)
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldBe a [TransactionExecutionResult.GasLimitNotCoveredBySponsorAccountBalance]
   }
 
-  it must "discover ether insufficient for doing too large transfer" in {
-    //todo
+  it must "refuse smart contract execution because of nonce mismatch" in {
+    val tx = Transaction.SmartContractExecution(
+      nonce = 1,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 50,
+      MockingSpace.Program.Happy(10)
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldBe a [TransactionExecutionResult.NonceMismatch]
   }
 
-  it must "discover ether insufficient for covering gas" in {
-    //todo
+  it must "execute adding to bonding queue (successful case)" in {
+    val tx = Transaction.Bonding(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 50,
+      validator1,
+      value = 100
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldEqual TransactionExecutionResult.Success(config.successfulBondingCost)
+    gs1.accountBalance(account1) shouldEqual (initialGlobalState.accountBalance(account1) - tx.value - config.successfulBondingCost)
+    gs1.validatorsBook.getInfoAbout(validator1).bondingEscrow shouldEqual tx.value
+  }
+
+  it must "execute adding to unbonding queue (successful case)" in {
+    val tx = Transaction.Unbonding(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 50,
+      validator1,
+      value = 100
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldEqual TransactionExecutionResult.Success(config.successfulUnbondingCost)
+    gs1.accountBalance(account1) shouldEqual (initialGlobalState.accountBalance(account1) - config.successfulUnbondingCost)
+    gs1.validatorsBook.getInfoAbout(validator1).unbondingEscrow shouldEqual tx.value
+    gs1.validatorsBook.getInfoAbout(validator1).stake shouldEqual 400L
+  }
+
+  it must "discover account balance insufficient for doing too large transfer" in {
+    val tx = Transaction.EtherTransfer(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 200,
+      targetAccount = account4,
+      value = 1001
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldBe a [TransactionExecutionResult.AccountBalanceInsufficientForTransfer]
+  }
+
+  it must "discover account balance insufficient for covering gas actually used" in {
+    val tx = Transaction.EtherTransfer(
+      nonce = 0,
+      sponsor = account1,
+      gasPrice = 1,
+      gasLimit = 200,
+      targetAccount = account4,
+      value = 999
+    )
+
+    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+    txResult1 shouldBe a [TransactionExecutionResult.AccountBalanceLeftInsufficientForCoveringGasCostAfterTransactionWasExecuted]
   }
 
 }
