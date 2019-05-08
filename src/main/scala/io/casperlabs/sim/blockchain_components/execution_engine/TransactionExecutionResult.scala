@@ -31,8 +31,6 @@ object TransactionExecutionResult {
 
   case class AccountBalanceInsufficientForTransfer(gasBurned: Gas, requestedAmount: Ether, currentBalance: Ether) extends TransactionExecutionResult
 
-  case class UnbondingOverdrive(gasBurned: Gas, actualStake: Ether, requestedValue: Ether) extends TransactionExecutionResult
-
   case class SmartContractUnhandledException(gasBurned: Gas) extends TransactionExecutionResult
 
   case class BondingRefused(gasBurned: Gas, reason: ValidatorsBook.BondingQueueAppendResult) extends TransactionExecutionResult

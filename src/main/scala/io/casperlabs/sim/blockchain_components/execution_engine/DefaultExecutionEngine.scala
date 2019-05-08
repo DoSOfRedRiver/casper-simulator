@@ -15,10 +15,10 @@ import io.casperlabs.sim.blockchain_components.hashing.{CryptographicDigester, H
   * 4. Execution cost (= gas).
   * 5. User accounts.
   *
-  * @param config
-  * @tparam CS
-  * @tparam P
-  * @tparam MS
+  * @param config blockchain parameters
+  * @tparam CS computing space type
+  * @tparam P (computing space) programs type
+  * @tparam MS (computing space) memory states type
   */
 class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: ComputingSpace[P,MS]) extends ExecutionEngine[MS, Transaction] {
 
@@ -52,8 +52,6 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
       case tx: Transaction.Unbonding => this.executeUnbonding(gs, tx, blockTime)
       case tx: Transaction.EquivocationSlashing => this.executeEquivocationSlashing(gs,tx)
     }
-
-//    println(s"ee: transaction: $transaction txResult=$txResult ")
 
     //if gas limit was exceeded, we ignore any other possible error
     if (txResult.gasBurned > transaction.gasLimit) {
@@ -204,7 +202,7 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
 
     return queueAppendResult match {
       case ValidatorsBook.BondingQueueAppendResult.OK =>
-        (GlobalState(gs.memoryState, gs.accounts.updateBalance(tx.sponsor, tx.value), updatedValidatorsBook), TransactionExecutionResult.Success(config.successfulBondingCost))
+        (GlobalState(gs.memoryState, gs.accounts.updateBalance(tx.sponsor, - tx.value), updatedValidatorsBook), TransactionExecutionResult.Success(config.successfulBondingCost))
       case other =>
         (gs, TransactionExecutionResult.BondingRefused(config.refusedBondingCost, other))
     }
@@ -214,11 +212,11 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
     if (gs.validatorsBook.isRegistered(tx.validator)) {
       val info = gs.validatorsBook.getInfoAbout(tx.validator)
       if (info.stake == 0)
-        return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedBondingCost, UnbondingQueueAppendResult.ValidatorNotActive))
+        return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedUnbondingCost, UnbondingQueueAppendResult.ValidatorNotActive))
       if (tx.sponsor != info.account)
-        return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedBondingCost, UnbondingQueueAppendResult.AccountMismatch))
+        return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedUnbondingCost, UnbondingQueueAppendResult.AccountMismatch))
     } else {
-      return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedBondingCost, UnbondingQueueAppendResult.ValidatorNotActive))
+      return (gs, TransactionExecutionResult.UnbondingRefused(config.refusedUnbondingCost, UnbondingQueueAppendResult.ValidatorNotActive))
     }
 
     val (updatedValidatorsBook, queueAppendResult) =
@@ -230,9 +228,9 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
 
     return queueAppendResult match {
       case ValidatorsBook.UnbondingQueueAppendResult.OK =>
-        (GlobalState(gs.memoryState, gs.accounts, updatedValidatorsBook), TransactionExecutionResult.Success(config.successfulBondingCost))
+        (GlobalState(gs.memoryState, gs.accounts, updatedValidatorsBook), TransactionExecutionResult.Success(config.successfulUnbondingCost))
       case other =>
-        (gs, TransactionExecutionResult.UnbondingRefused(config.refusedBondingCost, other))
+        (gs, TransactionExecutionResult.UnbondingRefused(config.refusedUnbondingCost, other))
     }
   }
 
