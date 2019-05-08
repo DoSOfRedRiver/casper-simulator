@@ -34,7 +34,7 @@ object Genesis {
 }
 
 case class NormalBlock(
-                  id: BlockId, //hash of <creator + parents + justifications + transactions + preStateHash>
+                  id: BlockId,
                   creator: ValidatorId,
                   dagLevel: Int,
                   parents: IndexedSeq[Block],

@@ -26,7 +26,10 @@ private[execution_engine] class ValidatorState private (
 {
 
   def registerBlockRewardDue(blockId: BlockId, amount: Ether, pTime: Gas): ValidatorState =
-    new ValidatorState(id, account, stake, bondingEscrow, unbondingEscrow, unconsumedBlockRewards.enqueue(UnconsumedBlockRewardInfo(pTime, blockId, amount)))
+    if (amount == 0) //this actually happens as a corner case, where the block burned only tiny amount of gas and the stake of validator is so small,
+      this           //that effective reward is less than 0 ether; then rounding comes into play and we end up with zero
+    else
+      new ValidatorState(id, account, stake, bondingEscrow, unbondingEscrow, unconsumedBlockRewards.enqueue(UnconsumedBlockRewardInfo(pTime, blockId, amount)))
 
   def bondingEscrowLock(delta: Ether): ValidatorState = new ValidatorState(id, account, stake, bondingEscrow + delta, unbondingEscrow, unconsumedBlockRewards)
 
