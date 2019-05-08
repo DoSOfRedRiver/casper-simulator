@@ -19,7 +19,7 @@ object RandomProgramsPlayground {
       StatementCode.addToAcc -> 1.5,
       StatementCode.assert -> 0.002,
       StatementCode.branch -> 0.3,
-      StatementCode.loop -> 0.2,
+      StatementCode.loop -> 0.05,
       StatementCode.clearAcc -> 1,
       StatementCode.exit -> 0.01,
       StatementCode.flip -> 1,
@@ -31,8 +31,8 @@ object RandomProgramsPlayground {
   )
 
   def main(args: Array[String]): Unit = {
-//    checkExecutionStatistics(10000, false)
-    findNicePrograms(100000)
+    checkExecutionStatistics(10000, false)
+//    findNicePrograms(100000)
 //    viewAndExecuteSamplePrograms(20)
   }
 

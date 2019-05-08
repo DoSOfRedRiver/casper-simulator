@@ -50,9 +50,8 @@ case class GlobalState[MS](memoryState: MS, accounts: AccountsRegistry, validato
   }
 
   def cleanupBlockRewardsQueue(pTime: Gas,  timeLimitForClaimingBlockReward: Gas): GlobalState[MS] = {
-    val (vb, transfers): (ValidatorsBook, Map[ValidatorId,Ether]) = validatorsBook.cleanupBlockRewardsQueue(pTime, timeLimitForClaimingBlockReward)
-    val mapAccountToEther = transfers map { case (vid, ether) => (validatorsBook.getInfoAbout(vid).account, ether)}
-    return GlobalState(memoryState, accounts.updateBalances(mapAccountToEther), vb)
+    val (vb, transfers): (ValidatorsBook, Map[Account,Ether]) = validatorsBook.cleanupBlockRewardsQueue(pTime, timeLimitForClaimingBlockReward)
+    return GlobalState(memoryState, accounts.updateBalances(transfers), vb)
   }
 
 }

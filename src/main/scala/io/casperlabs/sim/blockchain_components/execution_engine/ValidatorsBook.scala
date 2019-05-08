@@ -1,7 +1,7 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
 import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
-import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook.{BondingQueueAppendResult, BondingQueueItem, UnbondingQueueAppendResult, UnbondingQueueItem}
+import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook._
 
 import scala.collection.immutable.Queue
 
@@ -26,10 +26,10 @@ import scala.collection.immutable.Queue
   */
 class ValidatorsBook private (
                              private val validators: Map[ValidatorId, ValidatorState],
-                             private val blocksWithActiveRewardsPayment: Queue[(Gas,BlockId, ValidatorId)],
+                             val blocksWithActiveRewardsPayment: Queue[ActiveRewardsPaymentQueueItem],
                              private val blocksRewardEscrow: Map[BlockId, Ether],
-                             private val bondingQueue: Queue[BondingQueueItem],
-                             private val unbondingQueue: Queue[UnbondingQueueItem],
+                             val bondingQueue: Queue[BondingQueueItem],
+                             val unbondingQueue: Queue[UnbondingQueueItem],
                              private val cachedNumberOfActiveValidators: Int,
                              private val cachedTotalStake: Ether,
                              private val lastPTimeSeen: Gas
@@ -227,7 +227,7 @@ class ValidatorsBook private (
 
     return new ValidatorsBook(
       validators = updatedMapOfValidators,
-      blocksWithActiveRewardsPayment = blocksWithActiveRewardsPayment.enqueue((blockTime, blockId, creator)),
+      blocksWithActiveRewardsPayment = blocksWithActiveRewardsPayment.enqueue(ActiveRewardsPaymentQueueItem(blockTime, blockId, creator)),
       blocksRewardEscrow = blocksRewardEscrow + (blockId -> totalReward),
       bondingQueue,
       unbondingQueue,
@@ -243,12 +243,12 @@ class ValidatorsBook private (
     * @param blockTime block time we are doing cleanup against
     * @return
     */
-  def cleanupBlockRewardsQueue(blockTime: Gas, timeLimitForClaimingBlockReward: Gas): (ValidatorsBook, Map[ValidatorId,Ether]) = {
+  def cleanupBlockRewardsQueue(blockTime: Gas, timeLimitForClaimingBlockReward: Gas): (ValidatorsBook, Map[Account,Ether]) = {
     assert(blockTime >= lastPTimeSeen)
 
-    val (oldBlocks, freshBlocks) = blocksWithActiveRewardsPayment span { case (ptime, blockId, creator) => ptime + timeLimitForClaimingBlockReward < blockTime }
-    val account2ether: Map[Account, Ether] = (oldBlocks map {case (ptime, blockId, creator) => (getInfoAbout(creator).account, blocksRewardEscrow(blockId))}).toMap
-    val blockIdsToBeRemoved = blocksWithActiveRewardsPayment map { case (ptime, blockId, creator) => blockId }
+    val (oldBlocks, freshBlocks) = blocksWithActiveRewardsPayment span { case ActiveRewardsPaymentQueueItem(ptime, blockId, creator) => ptime + timeLimitForClaimingBlockReward < blockTime }
+    val account2ether: Map[Account, Ether] = (oldBlocks map {case ActiveRewardsPaymentQueueItem(ptime, blockId, creator) => (getInfoAbout(creator).account, blocksRewardEscrow(blockId))}).toMap
+    val blockIdsToBeRemoved = oldBlocks map { case ActiveRewardsPaymentQueueItem(ptime, blockId, creator) => blockId }
 
     val resultingValidatorsBook = new ValidatorsBook(
       validators,
@@ -325,6 +325,8 @@ object ValidatorsBook {
   case class BondingQueueItem(validator: ValidatorId, amount: Ether, requestTime: Gas, triggeringTime: Gas)
 
   case class UnbondingQueueItem(validator: ValidatorId, amount: Ether, requestTime: Gas, triggeringTime: Gas)
+
+  case class ActiveRewardsPaymentQueueItem(ptime: Gas, block: BlockId, validator: ValidatorId)
 
   sealed abstract class BondingQueueAppendResult
 

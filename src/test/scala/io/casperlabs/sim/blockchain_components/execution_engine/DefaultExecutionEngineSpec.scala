@@ -112,7 +112,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
     //todo
   }
 
-  it must "handle gas exceeded error in  smart contract execution" in {
+  it must "handle gas exceeded error in smart contract execution" in {
     //todo
   }
 
