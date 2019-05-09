@@ -1,6 +1,7 @@
 package io.casperlabs.sim.blockchain_components.computing_spaces
 
 import io.casperlabs.sim.blockchain_components.execution_engine.Gas
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Abstraction of "programming" layer of a blockchain, so the part where smart contracts live.
@@ -27,11 +28,11 @@ trait ComputingSpace[Program, MemoryState] {
 
 
   /**
-    * Calculates a program that is a composition of given two programs.
+    * Calculates a program that is a composition of given two programs (p1 is to be executed first, then p2).
     *
     * @param p1 program going to be executed as first in the pair
     * @param p2 program going to be executed as second in the pair
-    * @return
+    * @return result of the composition
     */
   def compose(p1: Program, p2: Program): Program
 
@@ -43,8 +44,26 @@ trait ComputingSpace[Program, MemoryState] {
     * @return ProgramResult(Some(ms), gas) - represent successful execution result with final memory state ms and specified amount of gas burned
     *         ProgramResult(None, gas) - represents failure of the program; failures also consume gas, so the amount of gas burned is here as well
     */
-  def execute(program: Program, memState: MemoryState): ProgramResult
+  def execute(program: Program, memState: MemoryState, gasLimit: Gas): ProgramResult
 
-  case class ProgramResult(ms: Option[MemoryState], gasUsed: Gas)
+  /**
+    * Appends the binary representation of given memory state to the on-going calculation of SHA-256 hash.
+    */
+  def updateDigestWithMemState(ms: MemoryState, digest: CryptographicDigester)
+
+  /**
+    * Appends the binary representation of given program to the on-going calculation of SHA-256 hash.
+    */
+  def updateDigestWithProgram(p: Program, digest: CryptographicDigester)
+
+
+  abstract class ProgramResult
+
+  object ProgramResult {
+    case class Success(ms: MemoryState, gasUsed: Gas) extends ProgramResult
+    case class Crash(gasUsed: Gas) extends ProgramResult
+    case object GasLimitExceeded extends ProgramResult
+  }
+
 }
 

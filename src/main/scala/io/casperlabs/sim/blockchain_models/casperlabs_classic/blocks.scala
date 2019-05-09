@@ -1,34 +1,49 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.blockchain_components.execution_engine.Transaction
-import io.casperlabs.sim.blockchain_components.hashing.{FakeHashGenerator, HashValue}
-import io.casperlabs.sim.simulation_framework.AgentId
+import io.casperlabs.sim.abstract_blockchain.AbstractBlock
+import io.casperlabs.sim.blockchain_components.execution_engine.{BlockId, Gas, Transaction, ValidatorId}
+import io.casperlabs.sim.blockchain_components.hashing.{Hash, RealSha256Digester}
 
-sealed abstract class Block {
-  def id: HashValue
-  def creator: AgentId // TODO: create specific Validator ID type?
+sealed abstract class Block extends AbstractBlock {
   def dagLevel: Int
-  def parents: IndexedSeq[Block]
-  def justifications: IndexedSeq[Block]
-  def transactions: IndexedSeq[Transaction]
+  def pTime: Gas //total amount of gas burned in past cone of this block (not including transactions in THIS block !), i.e. this is the value of block-time that transactions in this block can see
+  def gasBurned: Gas //amount of gas burned in this block
+  def postStateHash: Hash
 }
 
-case object Genesis extends Block {
-  override val id: HashValue = FakeHashGenerator.nextHash()
-  override val creator: AgentId = -1 // no one created genesis
+case class Genesis private (id: BlockId, postStateHash: Hash) extends Block {
+  override val creator: ValidatorId = -1 // no one created genesis
   override def dagLevel: Int = 0
   override def parents: IndexedSeq[Block] = IndexedSeq.empty
   override def justifications: IndexedSeq[Block] = IndexedSeq.empty
   override def transactions: IndexedSeq[Transaction] = IndexedSeq.empty
+  override def pTime = 0
+  override def gasBurned: Gas = 0
+
+}
+
+object Genesis {
+
+  def generate(magicWord: String, postStateHash: Hash): Genesis = {
+    val digester = new RealSha256Digester
+    digester.updateWith(magicWord)
+    val blockId = digester.generateHash()
+    return Genesis(blockId, postStateHash)
+  }
+
 }
 
 case class NormalBlock(
-                  id: HashValue,
-                  creator: AgentId,
+                  id: BlockId,
+                  creator: ValidatorId,
                   dagLevel: Int,
                   parents: IndexedSeq[Block],
                   justifications: IndexedSeq[Block],
-                  transactions: IndexedSeq[Transaction]
+                  transactions: IndexedSeq[Transaction],
+                  pTime: Gas,
+                  gasBurned: Gas,
+                  preStateHash: Hash,
+                  postStateHash: Hash
           ) extends Block
 {
 
