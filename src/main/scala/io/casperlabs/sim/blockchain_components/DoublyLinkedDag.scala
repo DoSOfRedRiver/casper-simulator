@@ -10,20 +10,20 @@ import scala.collection.mutable
   * targets of a node (i.e. arrows from `n` to other nodes) and
   * sources of a node (i.e. arrows from other nodes to `n`).
   *
-  * @tparam Node The type of the nodes in the DAG.
+  * @tparam Vertex The type of the nodes in the DAG.
   */
-trait DoublyLinkedDag[Node] {
-  def targets(n: Node): Iterable[Node]
-  def sources(n: Node): Iterable[Node]
+trait DoublyLinkedDag[Vertex] {
+  def targets(n: Vertex): Iterable[Vertex]
+  def sources(n: Vertex): Iterable[Vertex]
 
-  def contains(n: Node): Boolean
+  def contains(n: Vertex): Boolean
 
   /**
     * List of nodes which are only sources, but not targets,
     * i.e. nodes with only outgoing arrows and no incoming arrows.
     * @return list of nodes which are only sources.
     */
-  def tips: Iterable[Node]
+  def tips: Iterable[Vertex]
 
   /**
     * Add a new node to the DAG. The targets of the new node
@@ -33,13 +33,13 @@ trait DoublyLinkedDag[Node] {
     * @param n New node to add
     * @param targets List of nodes arrows from `n` point to
     */
-  def insert(n: Node, targets: Iterable[Node]): DoublyLinkedDag.InsertResult[Node]
+  def insert(n: Vertex, targets: Iterable[Vertex]): DoublyLinkedDag.InsertResult[Vertex]
 }
 
 object DoublyLinkedDag {
-  sealed trait InsertResult[Node]
+  sealed trait InsertResult[Vertex]
   object InsertResult {
-    case class AlreadyInserted[Node]() extends InsertResult[Node]
+    case class AlreadyInserted[Vertex]() extends InsertResult[Vertex]
 
     /**
       * Success case returns a continuation for actually
@@ -50,28 +50,29 @@ object DoublyLinkedDag {
       * checks if we do decide to go through with the insert.
       * @param continuation Function to do the actual insert.
       */
-    case class Success[Node](continuation: () => Unit) extends InsertResult[Node]
-    case class MissingTargets[Node](nodes: Iterable[Node]) extends InsertResult[Node]
+    case class Success[Vertex](continuation: () => Unit) extends InsertResult[Vertex]
+    case class MissingTargets[Vertex](nodes: Iterable[Vertex]) extends InsertResult[Vertex]
   }
 
   /**
     * Breadth-first traversal
     * @param starts starting nodes (first nodes to visit)
-    * @param nextNodes function determining which nodes a given nodes is connected to
-    * @tparam Node type of nodes in the graph
+    * @param nextVertices function determining which nodes a given nodes is connected to
+    * @tparam Vertex type of nodes in the graph
     * @return an iterator traversing the nodes in breadth-first order
     */
-  def bfTraverse[Node](
-                        starts: Iterable[Node],
-                        nextNodes: Node => Iterable[Node]
-                      ): Iterator[Node] = new Iterator[Node] {
-    private val q: mutable.Queue[Node] = mutable.Queue.empty
-    private val visited: mutable.HashSet[Node] = mutable.HashSet.empty
+  def bfTraverse[Vertex](
+                        starts: Iterable[Vertex],
+                        nextVertices: Vertex => Iterable[Vertex]
+                      ): Iterator[Vertex] = new Iterator[Vertex] {
+    private val q: mutable.Queue[Vertex] = mutable.Queue.empty
+    private val visited: mutable.HashSet[Vertex] = mutable.HashSet.empty
     starts.foreach(q.enqueue(_))
 
-    override def next(): Node = if (hasNext) {
+    override def next(): Vertex = if (hasNext) {
       val node = q.dequeue()
-      nextNodes(node).foreach(n => if (!visited(n)) q.enqueue(n))
+      visited.add(node)
+      nextVertices(node).foreach(n => if (!visited(n)) q.enqueue(n))
       node
     } else {
       Iterator.empty.next()
@@ -92,43 +93,46 @@ object DoublyLinkedDag {
     }
   }
 
-  def targetTraverse[Node](
-                            starts: Iterable[Node],
-                            dag: DoublyLinkedDag[Node]
-                          ): Iterator[Node] =
+  def targetTraverse[Vertex](
+                            starts: Iterable[Vertex],
+                            dag: DoublyLinkedDag[Vertex]
+                          ): Iterator[Vertex] =
     bfTraverse(starts, dag.targets)
 
-  def sourceTraverse[Node](
-                            starts: Iterable[Node],
-                            dag: DoublyLinkedDag[Node]
-                          ): Iterator[Node] =
+  def sourceTraverse[Vertex](
+                            starts: Iterable[Vertex],
+                            dag: DoublyLinkedDag[Vertex]
+                          ): Iterator[Vertex] =
     bfTraverse(starts, dag.sources)
 
-  def blockDag(
-                genesis: Block,
-                prev: Block => IndexedSeq[Block]
-              ): DoublyLinkedDag[Block] = new DoublyLinkedDag[Block] {
-    type BlockList = mutable.ArrayBuffer[Block]
-    private def empty: BlockList = mutable.ArrayBuffer.empty[Block]
-    private val childMap: mutable.HashMap[Block, BlockList] = mutable.HashMap.empty
-    private val childless: mutable.HashSet[Block] = mutable.HashSet.empty
-    private val allBlocks: mutable.HashSet[Block] = mutable.HashSet.empty
+  def prePointerDag[Vertex](
+                genesis: Vertex,
+                prev: Vertex => IndexedSeq[Vertex]
+              ): DoublyLinkedDag[Vertex] = new DoublyLinkedDag[Vertex] {
+    type VertexList = mutable.ArrayBuffer[Vertex]
+    private def empty: VertexList = mutable.ArrayBuffer.empty[Vertex]
+    private val childMap: mutable.HashMap[Vertex, VertexList] = mutable.HashMap.empty
+    private val childless: mutable.HashSet[Vertex] = mutable.HashSet.empty
+    private val allVertices: mutable.HashSet[Vertex] = mutable.HashSet.empty
 
-    override def contains(b: Block): Boolean = allBlocks.contains(b)
+    childless.add(genesis)
+    allVertices.add(genesis)
 
-    override def targets(b: Block): Iterable[Block] =
-      if (allBlocks.contains(b)) prev(b)
+    override def contains(b: Vertex): Boolean = allVertices.contains(b)
+
+    override def targets(b: Vertex): Iterable[Vertex] =
+      if (allVertices.contains(b)) prev(b)
       else Nil
 
-    override def sources(b: Block): Iterable[Block] = childMap.getOrElse(b, Nil)
+    override def sources(b: Vertex): Iterable[Vertex] = childMap.getOrElse(b, Nil)
 
-    override def tips: Iterable[Block] = childless
+    override def tips: Iterable[Vertex] = childless
 
-    override def insert(b: Block, bTargets: Iterable[Block]): DoublyLinkedDag.InsertResult[Block] =
+    override def insert(b: Vertex, bTargets: Iterable[Vertex]): DoublyLinkedDag.InsertResult[Vertex] =
       // Do not add a block twice
-      if (allBlocks.contains(b)) DoublyLinkedDag.InsertResult.AlreadyInserted()
+      if (allVertices.contains(b)) DoublyLinkedDag.InsertResult.AlreadyInserted()
       else {
-        val missing = bTargets.filterNot(allBlocks.contains)
+        val missing = bTargets.filterNot(allVertices.contains)
         if (missing.nonEmpty)
           DoublyLinkedDag.InsertResult.MissingTargets(missing)
         else
@@ -138,17 +142,19 @@ object DoublyLinkedDag {
               // targets of new block are no longer childless
               val _ = childless.remove(block)
             }
-            // Blocks must be inserted in a topological order (see check above), so
+            // Vertices must be inserted in a topological order (see check above), so
             // when a block is inserted it is not a child of any existing block.
             childMap.update(b, empty)
             childless.add(b)
+
+            allVertices.add(b)
           })
       }
   }
 
   def pBlockDag(genesis: Block): DoublyLinkedDag[Block] =
-    blockDag(genesis, _.parents)
+    prePointerDag(genesis, _.parents)
 
   def jBlockDag(genesis: Block): DoublyLinkedDag[Block] =
-    blockDag(genesis, _.justifications)
+    prePointerDag(genesis, _.justifications)
 }
