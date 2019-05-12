@@ -6,10 +6,7 @@ import io.casperlabs.sim.simulation_framework._
 
 import scala.collection.mutable
 
-class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload](
-                                               simulationEnd: Timepoint,
-                                               networkBehavior: NetworkBehavior[MsgPayload]
-                                             ) extends Simulation[MsgPayload, ExtEventPayload, PrivatePayload] {
+class SimulationImpl(simulationEnd: Timepoint, networkBehavior: NetworkBehavior[_]) extends Simulation {
 
   private val queue = new SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload]
   private val agentsRegistry = new mutable.HashMap[AgentId, Agent[MsgPayload, ExtEventPayload, PrivatePayload]]
@@ -40,8 +37,8 @@ class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload](
                       externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload],
                       agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]
                     ): Unit = {
-    queue.addCreationEvents(agentsCreationStream)
-    queue.addExternalEvents(externalEventsGenerator)
+    queue.plugInAgentsCreationStream(agentsCreationStream)
+    queue.plugInExternalEventsStream(externalEventsGenerator)
     while (clock <= simulationEnd) {
       val currentEventsQueueItem = queue.dequeue()
       clock = currentEventsQueueItem.scheduledTime
@@ -59,7 +56,7 @@ class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload](
 
         case ev: NewAgentCreation[MsgPayload,ExtEventPayload,PrivatePayload] =>
           registerAgent(ev.agentInstance)
-          ev.agentInstance.startup()
+          ev.agentInstance.onStartup()
 
         case ev: PrivateEvent[MsgPayload,ExtEventPayload,PrivatePayload] =>
           val agent = unsafeGetAgent(ev.affectedAgent, ev)

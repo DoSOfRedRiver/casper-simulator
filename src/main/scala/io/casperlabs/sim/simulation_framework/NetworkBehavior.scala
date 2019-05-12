@@ -5,7 +5,7 @@ package io.casperlabs.sim.simulation_framework
   * Implementations correspond to a variety of strategies on what network delays and failures should show up.
   * Delays are decided per message.
   */
-trait NetworkBehavior[MsgPayload] {
+trait NetworkBehavior[Msg] {
 
   /**
     * Tells the relative delivery delay that should be simulated for the specified agent-to-agent message.
@@ -17,7 +17,7 @@ trait NetworkBehavior[MsgPayload] {
     * @param sendingTime timepoint when the message was sent
     * @return None = this message should be lost, Some(n) = it should take (n + networkLatencyLowerBound) to deliver this message
     */
-  def calculateUnicastDelay(msg: MsgPayload, sender: AgentId, destination: AgentId, sendingTime: Timepoint): Option[TimeDelta]
+  def calculateUnicastDelay(msg: Msg, sender: AgentId, destination: AgentId, sendingTime: Timepoint): Option[TimeDelta]
 
   /**
     * Minimal amount of time that a delivery of agent-to-agent message can take.

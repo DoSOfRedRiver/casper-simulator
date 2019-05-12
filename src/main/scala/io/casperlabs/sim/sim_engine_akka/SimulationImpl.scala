@@ -8,7 +8,7 @@ import io.casperlabs.sim.simulation_framework.{Agent, AgentsCreationStream, Exte
   * Simulation engine impl based on akka.
   * We arrange here the actor system and create actors that run the simulation.
   */
-class SimulationImpl[MsgPayload, ExtEventPayload, PrivatePayload] extends Simulation[MsgPayload, ExtEventPayload, PrivatePayload] {
+class SimulationImpl[Msg] extends Simulation[Msg] {
   private val actorSystem = ActorSystem("sim", ConfigFactory.load("sim"))
   private val idGenerator = Iterator.iterate(0L)(_ + 1L)
 

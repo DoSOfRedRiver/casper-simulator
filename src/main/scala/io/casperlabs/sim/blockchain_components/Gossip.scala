@@ -33,8 +33,8 @@ object Gossip {
     * @return Naive gossiping service
     */
   def naive[MsgPayload, ExtEventPayload, PrivatePayload](s: Simulation[MsgPayload, ExtEventPayload, PrivatePayload],
-                                         d: Discovery[AgentId, AgentId],
-                                         n: NetworkBehavior[MsgPayload]
+                                                         d: Discovery[AgentId, AgentId],
+                                                         n: NetworkBehavior[MsgPayload]
                                         ): Gossip[AgentId, AgentId, MsgPayload] =
     new Gossip[AgentId, AgentId, MsgPayload] {
       override def discovery: Discovery[AgentId, AgentId] = d

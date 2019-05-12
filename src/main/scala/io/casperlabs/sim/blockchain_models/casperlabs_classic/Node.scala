@@ -10,13 +10,13 @@ import io.casperlabs.sim.simulation_framework._
 import scala.collection.mutable
 
 class Node(
-  override val id: AgentId,
-  stakes: Map[AgentId, Int], // TODO: have this information in block instead
-  d: Discovery[AgentId, AgentId],
-  g: Gossip[AgentId, AgentId, Node.Comm],
-  genesis: Block,
-  proposeStrategy: Node.ProposeStrategy,
-  config: BlockchainConfig
+            override val ref: AgentId,
+            stakes: Map[AgentId, Int], // TODO: have this information in block instead
+            d: Discovery[AgentId, AgentId],
+            g: Gossip[AgentId, AgentId, Node.Comm],
+            genesis: Block,
+            proposeStrategy: Node.ProposeStrategy,
+            config: BlockchainConfig
 ) extends Agent[Node.Comm, Node.Operation, Node.Propose.type] {
 
   type MS = BinaryArraySpace.MemoryState
@@ -110,16 +110,16 @@ class Node(
     val parentsIds = parents.map(b => b.id)
     val justifications = latestMessages.values.toIndexedSeq
     val justificationsIds = justifications.map(b => b.id)
-    val newBlockId = blocksExecutor.calculateBlockId(id, parentsIds, justificationsIds, txns, parents(0).postStateHash)
+    val newBlockId = blocksExecutor.calculateBlockId(ref, parentsIds, justificationsIds, txns, parents(0).postStateHash)
 
     //todo: we need a real pre-state here
     val preState: GlobalState[MS] = GlobalState.empty(computingSpace)
 
-    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(preState, pTimeOfThisBlock, newBlockId, id, txns)
+    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(preState, pTimeOfThisBlock, newBlockId, ref, txns)
 
     val block = NormalBlock(
       id = newBlockId,
-      creator = this.id,
+      creator = this.ref,
       dagLevel = parents.map(_.dagLevel).max + 1,
       parents,
       justifications,
@@ -132,7 +132,7 @@ class Node(
     handleBlock(block)
   }
 
-  override def startup(): Unit = ???
+  override def onStartup(): Unit = ???
 
   def addBlock(b: Block): Node.AddBlockResult =
     (pDag.insert(b, b.parents), jDag.insert(b, b.justifications)) match {

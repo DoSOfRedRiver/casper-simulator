@@ -2,12 +2,12 @@ package io.casperlabs.sim.simulation_framework
 
 import io.casperlabs.sim.simulation_framework.SimEventsQueueItem.NewAgentCreation
 
-trait AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload] {
-  def next(): NewAgentCreation[MsgPayload,ExtEventPayload, PrivatePayload]
+trait AgentsCreationStream[Msg] {
+  def next(): Option[NewAgentCreation[Msg]]
 }
 
 object AgentsCreationStream {
-  def fromIterator[MsgPayload, ExtEventPayload, PrivatePayload](
-    iter: Iterator[NewAgentCreation[MsgPayload, ExtEventPayload, PrivatePayload]]
-  ): AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload] = () => iter.next()
+  def fromIterator[Msg](iter: Iterator[NewAgentCreation[Msg]]): AgentsCreationStream[Msg] =
+    () => if (iter.hasNext) Some(iter.next()) else None
+
 }

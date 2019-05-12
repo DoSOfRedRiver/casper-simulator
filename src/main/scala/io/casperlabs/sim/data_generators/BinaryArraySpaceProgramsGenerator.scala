@@ -1,5 +1,6 @@
 package io.casperlabs.sim.data_generators
 
+import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace
 import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace._
 
 import scala.annotation.switch
@@ -31,7 +32,7 @@ class BinaryArraySpaceProgramsGenerator(
                                          memorySize: Int,
                                          frequenciesOfStatements: Map[Int,Double],
                                          entanglementFactor: Double
-                                       ) {
+                                       ) extends ProgramsGenerator[BinaryArraySpace.Program, BinaryArraySpace.MemoryState, BinaryArraySpace.ComputingSpace.type] {
 
   private val statementSelector: RandomSelector[Int] = new RandomSelector(frequenciesOfStatements, random)
 

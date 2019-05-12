@@ -12,6 +12,7 @@ import scala.collection.mutable
   * type 1. agent-to-agent message delivery (by time of scheduled message delivery)
   * type 2. new agent showing up in the network (by time of creation) - provided by agents creation stream
   * type 3. external events - provided by external events stream (by time of event)
+  * type 4: private events - these are events an agent sends to itself, which is an approach to implement "timers" feature
   *
   * Every event is handled by a single agent. In effect of this handling - arbitrary number of type-1 messages
   * is be created and so they must be explicitly enqueued. Type-2 and type-3 are created "automagically" in the background
@@ -30,12 +31,12 @@ class SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload] {
   private var latestExtEventTimepoint: Timepoint = Timepoint(0)
   private var latestAgentCreationTimepoint: Timepoint = Timepoint(0)
 
-  def addExternalEvents(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit ={
+  def plugInExternalEventsStream(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit ={
     extEvents = Some(externalEventsGenerator)
     ensureExtEventsAreGeneratedUpTo(latestAgentMsgTimepoint)
   }
 
-  def addCreationEvents(agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
+  def plugInAgentsCreationStream(agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
     createEvents = Some(agentsCreationStream)
     ensureAgentCreationsAreGeneratedUpTo(latestAgentMsgTimepoint)
   }
@@ -76,10 +77,10 @@ class SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload] {
     }
 
   private def ensureAgentCreationsAreGeneratedUpTo(timepoint: Timepoint): Unit =
-  createEvents.foreach { agentsCreationStream =>
-    while (latestAgentCreationTimepoint < timepoint)
-      generateNextAgentCreationEvent(agentsCreationStream)
-  }
+    createEvents.foreach { agentsCreationStream =>
+      while (latestAgentCreationTimepoint < timepoint)
+        generateNextAgentCreationEvent(agentsCreationStream)
+    }
 
   private def generateNextExtEvent(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
     val event = externalEventsGenerator.next()
@@ -92,6 +93,5 @@ class SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload] {
     queue.enqueue(event)
     latestAgentCreationTimepoint = event.scheduledTime
   }
-
 
 }

@@ -5,12 +5,12 @@ import io.casperlabs.sim.simulation_framework.SimEventsQueueItem.ExternalEvent
 /**
   * Contract for external events generators.
   */
-trait ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload] {
-  def next(): ExternalEvent[MsgPayload, ExtEventPayload, PrivatePayload]
+trait ExternalEventsStream[Msg] {
+  def next(): ExternalEvent[Msg]
 }
 
 object ExternalEventsStream {
-  def fromIterator[MsgPayload, ExtEventPayload, PrivatePayload](
-    iter: Iterator[ExternalEvent[MsgPayload, ExtEventPayload, PrivatePayload]]
-  ): ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload] = () => iter.next()
+  def fromIterator[Msg](
+    iter: Iterator[ExternalEvent[Msg]]
+  ): ExternalEventsStream[Msg] = () => iter.next()
 }

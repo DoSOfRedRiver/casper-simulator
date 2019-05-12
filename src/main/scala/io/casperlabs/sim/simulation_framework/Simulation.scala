@@ -5,13 +5,18 @@ package io.casperlabs.sim.simulation_framework
   * We are simulating a network of agents communicating via message-passing and exposed to a stream of external events.
   * The simulation runs in virtualised time.
   */
-trait Simulation[MsgPayload, ExtEventPayload, PrivatePayload] {
+trait Simulation[Msg] {
+
   def nextId(): Long
+
   def currentTime(): Timepoint
-  def registerAgent(agent: Agent[MsgPayload, ExtEventPayload, PrivatePayload]): Unit
-  def registerCommunication(event: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload, PrivatePayload]): Unit
+
+  def registerAgent(agent: Agent[Msg]): Unit
+
+  def registerCommunication(event: SimEventsQueueItem.AgentToAgentMsg[Msg]): Unit
+
   def start(
-             externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload],
-             agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]
+             externalEventsGenerator: Iterator[SimEventsQueueItem.ExternalEvent[Msg]],
+             agentsCreationStream: Iterator[SimEventsQueueItem.NewAgentCreation[Msg]]
            ): Unit
 }
