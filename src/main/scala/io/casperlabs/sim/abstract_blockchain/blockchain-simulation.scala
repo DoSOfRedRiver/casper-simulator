@@ -1,7 +1,7 @@
 package io.casperlabs.sim.abstract_blockchain
 
-import io.casperlabs.sim.blockchain_components.execution_engine.{BlockId, NodeId, Transaction}
-import io.casperlabs.sim.simulation_framework.Timepoint
+import io.casperlabs.sim.blockchain_components.execution_engine.Transaction
+import io.casperlabs.sim.simulation_framework.{AgentRef, Timepoint}
 import rx.{Observable, Observer}
 
 /**
@@ -37,7 +37,7 @@ trait BlockchainSimulation extends Observable[SimulationOutputItem] with Observe
   * @param deliveryTimepoint scheduled timepoint of delivery
   * @param node target node
   */
-case class ScheduledDeploy(transaction: Transaction, deliveryTimepoint: Timepoint, node: NodeId)
+case class ScheduledDeploy(transaction: Transaction, deliveryTimepoint: Timepoint, node: AgentRef)
 
 
 abstract class SimulationOutputItem

@@ -1,7 +1,8 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
-import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
+import io.casperlabs.sim.abstract_blockchain.{BlockId, BlockchainConfig, ValidatorId}
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook._
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 import scala.collection.immutable.Queue
 
@@ -204,6 +205,11 @@ class ValidatorsBook private (
   def activeValidators: Iterable[ValidatorId] = (validators filter { case (id, state) => state.stake > 0 }).keys
 
   /**
+    * Extracts validator weights map.
+    */
+  def validatorWeightsMap: Map[ValidatorId, Ether] = validators.mapValues(_.stake).filter { case (id,stake) => stake > 0 }
+
+  /**
     * Number of active validators (= validators that have non-zero current stake).
     */
   def numberOfValidators: Int = cachedNumberOfActiveValidators
@@ -292,6 +298,42 @@ class ValidatorsBook private (
       pTime)
 
     return (book, totalRewards)
+  }
+
+  def updateDigest(digester: CryptographicDigester): Unit = {
+    for (v <- validators.values)
+      v.updateDigest(digester)
+    digester.updateWith(101)
+    for (item <- blocksWithActiveRewardsPayment) {
+      digester.updateWith(item.ptime)
+      digester.updateWith(item.validator)
+      digester.updateWithHash(item.block)
+    }
+    digester.updateWith(102)
+    for ((bid,eth) <- blocksRewardEscrow) {
+      digester.updateWithHash(bid)
+      digester.updateWith(eth)
+    }
+    digester.updateWith(103)
+    for (item <- bondingQueue) {
+      digester.updateWith(item.amount)
+      digester.updateWith(item.validator)
+      digester.updateWith(item.requestTime)
+      digester.updateWith(item.triggeringTime)
+
+    }
+    digester.updateWith(104)
+    for (item <- unbondingQueue) {
+      digester.updateWith(item.amount)
+      digester.updateWith(item.validator)
+      digester.updateWith(item.requestTime)
+      digester.updateWith(item.triggeringTime)
+
+    }
+    digester.updateWith(105)
+    digester.updateWith(cachedNumberOfActiveValidators)
+    digester.updateWith(cachedTotalStake)
+    digester.updateWith(lastPTimeSeen)
   }
 
 }

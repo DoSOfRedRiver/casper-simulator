@@ -9,7 +9,7 @@ import io.casperlabs.sim.blockchain_components.hashing.Hash
   * @tparam MS type of memory states
   * @tparam B type of blocks
   */
-trait BlocksExecutor[MS, B <: AbstractBlock] {
+trait BlocksExecutor[MS, B <: AbstractNormalBlock] {
 
   /**
     * Executes transactions in a block (+ any block-level logic).

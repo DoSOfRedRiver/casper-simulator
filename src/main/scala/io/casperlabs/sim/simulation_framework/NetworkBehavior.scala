@@ -1,11 +1,13 @@
 package io.casperlabs.sim.simulation_framework
 
+import scala.util.Random
+
 /**
   * Contract for the network delivery semantics algorithms.
   * Implementations correspond to a variety of strategies on what network delays and failures should show up.
   * Delays are decided per message.
   */
-trait NetworkBehavior[Msg] {
+trait NetworkBehavior {
 
   /**
     * Tells the relative delivery delay that should be simulated for the specified agent-to-agent message.
@@ -17,7 +19,7 @@ trait NetworkBehavior[Msg] {
     * @param sendingTime timepoint when the message was sent
     * @return None = this message should be lost, Some(n) = it should take (n + networkLatencyLowerBound) to deliver this message
     */
-  def calculateUnicastDelay(msg: Msg, sender: AgentId, destination: AgentId, sendingTime: Timepoint): Option[TimeDelta]
+  def calculateUnicastDelay(msg: Any, sender: AgentRef, destination: AgentRef, sendingTime: Timepoint): Option[TimeDelta]
 
   /**
     * Minimal amount of time that a delivery of agent-to-agent message can take.
@@ -36,32 +38,34 @@ object NetworkBehavior {
     * A simple Network behaviour in which the delay is sample uniformly from
     * [minDelay, maxDelay) and there is a constant probability of the message
     * being dropped.
+    *
+    * @param random source of randomness
     * @param minDelay minimum network delay
-    * @param maxDelay maxmum network delay
+    * @param maxDelay maximum network delay
     * @param dropRate number between 0 and 1 inclusive representing the probability
     *                 of a message being dropped
     * @tparam MsgPayload Type of messages to send
     * @return a simple network behaviour implementation as described above.
     */
   def uniform[MsgPayload](
+                           random: Random,
                            minDelay: TimeDelta,
                            maxDelay: TimeDelta,
                            dropRate: Double
-                         ): NetworkBehavior[MsgPayload] =
-    new NetworkBehavior[MsgPayload] {
-      private val rng = new scala.util.Random
+                         ): NetworkBehavior =
+    new NetworkBehavior {
       private val delayDelta = (maxDelay - minDelay).toInt
 
       override def calculateUnicastDelay(
-                                          msg: MsgPayload,
-                                          sender: AgentId,
-                                          destination: AgentId,
+                                          msg: Any,
+                                          sender: AgentRef,
+                                          destination: AgentRef,
                                           sendingTime: Timepoint
                                         ): Option[TimeDelta] = {
-        val dropped = rng.nextDouble() < dropRate
+        val dropped = random.nextDouble() < dropRate
         if (dropped) None
         else {
-          val delay = rng.nextInt(delayDelta) + minDelay
+          val delay = random.nextInt(delayDelta) + minDelay
           Some(delay)
         }
       }

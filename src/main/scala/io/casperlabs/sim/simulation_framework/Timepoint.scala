@@ -12,3 +12,7 @@ case class Timepoint(micros: Long) extends AnyVal with Ordered[Timepoint] {
 
   def -(other: Timepoint): TimeDelta = this.micros - other.micros
 }
+
+object Timepoint {
+  val zero: Timepoint = Timepoint(0L)
+}

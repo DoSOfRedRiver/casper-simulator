@@ -1,7 +1,8 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.blockchain_components.DoublyLinkedDag
-import io.casperlabs.sim.simulation_framework.AgentId
+import io.casperlabs.sim.blockchain_components.execution_engine.Ether
+import io.casperlabs.sim.blockchain_components.graphs.DoublyLinkedDag
+import io.casperlabs.sim.simulation_framework.AgentRef
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -23,10 +24,10 @@ object BlockdagUtils {
     */
   def lmdScoring[Id, Vertex](
                    latestMessages: Map[Id, Vertex],
-                   weights: (Vertex, Id) => Int,
+                   weights: (Vertex, Id) => Ether,
                    pDag: DoublyLinkedDag[Vertex],
-                  ): mutable.HashMap[Vertex, Int] = {
-    val scores: mutable.HashMap[Vertex, Int] = mutable.HashMap.empty
+                  ): mutable.HashMap[Vertex, Ether] = {
+    val scores: mutable.HashMap[Vertex, Ether] = mutable.HashMap.empty
 
     // Scoring phase
     latestMessages.keys.foreach { validator =>
@@ -41,14 +42,14 @@ object BlockdagUtils {
   }
 
   def lmdGhost(
-                latestMessages: Map[AgentId, Block],
-                weights: Map[AgentId, Int], // TODO: factor out and put in blocks
+                latestMessages: Map[AgentRef, Block],
+                weights: Map[AgentRef, Int], // TODO: factor out and put in blocks
                 pDag: DoublyLinkedDag[Block],
                 genesis: Block
               ): IndexedSeq[Block] = {
     val scores = lmdScoring(
       latestMessages, 
-      (block: Block, validator: AgentId) => weights(validator), 
+      (block: Block, validator: AgentRef) => weights(validator),
       pDag
     )
 
@@ -72,11 +73,11 @@ object BlockdagUtils {
 
 
   def lmdMainchainGhost[Id, Vertex, Ord: Ordering](
-                           latestMessages: Map[Id, Vertex],
-                           weights: (Vertex, Id) => Int,
-                           pDag: DoublyLinkedDag[Vertex],
-                           genesis: Vertex,
-                           tieBreaker: Vertex => Ord
+                                                    latestMessages: Map[Id, Vertex],
+                                                    validatorWeightExtractor: (Vertex, Id) => Ether,
+                                                    pDag: DoublyLinkedDag[Vertex],
+                                                    genesis: Vertex,
+                                                    tieBreaker: Vertex => Ord
                           ): Vertex = {
     val mainChainSubDag = new DoublyLinkedDag[Vertex] {
       def targets(n: Vertex): Iterable[Vertex] = pDag.targets(n).take(1)
@@ -85,16 +86,17 @@ object BlockdagUtils {
       def tips: Iterable[Vertex] = pDag.tips
       def insert(n: Vertex, targets: Iterable[Vertex]): DoublyLinkedDag.InsertResult[Vertex] = pDag.insert(n, targets)
     }
-    val scores = lmdScoring(latestMessages, weights, mainChainSubDag)
+    val scores: mutable.HashMap[Vertex, Ether] = lmdScoring(latestMessages, validatorWeightExtractor, mainChainSubDag)
 
     // traversal phase
     @tailrec
     def loop(block: Vertex): Vertex = 
       pDag.sources(block).toList match {
         case Nil => block
-        case nonempty => loop( nonempty.maxBy(b => scores.getOrElse(b, 0) -> tieBreaker(b)) )
+        case nonempty => loop( nonempty.maxBy(b => scores.getOrElse(b, 0L) -> tieBreaker(b)) )
       }
 
     loop(genesis)
   }
+
 }

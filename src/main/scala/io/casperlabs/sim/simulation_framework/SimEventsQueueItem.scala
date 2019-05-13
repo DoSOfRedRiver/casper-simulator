@@ -3,41 +3,41 @@ package io.casperlabs.sim.simulation_framework
 /**
   * Base class of messages that can be queued in the main events queue.
   */
-sealed trait SimEventsQueueItem[Msg] {
+sealed trait SimEventsQueueItem {
   val id: Long
-  val scheduledTime: Timepoint
+  val scheduledDeliveryTime: Timepoint
 }
 
 object SimEventsQueueItem {
 
-  case class AgentToAgentMsg[Msg](
+  case class AgentToAgentMsg(
                                    id: Long,
-                                   source: AgentId,
-                                   destination: AgentId,
+                                   source: AgentRef,
+                                   destination: AgentRef,
                                    sentTime: Timepoint,
-                                   scheduledTime: Timepoint,
-                                   payload: Msg) extends SimEventsQueueItem[Msg]
+                                   scheduledDeliveryTime: Timepoint,
+                                   payload: Any) extends SimEventsQueueItem
 
-  case class ExternalEvent[Msg](
+  case class ExternalEvent(
                                  id: Long,
-                                 affectedAgent: AgentId,
-                                 scheduledTime: Timepoint,
-                                 payload: Msg) extends SimEventsQueueItem[Msg]
+                                 affectedAgent: AgentRef,
+                                 scheduledDeliveryTime: Timepoint,
+                                 payload: Any) extends SimEventsQueueItem
 
-  case class NewAgentCreation[Msg](
-                id: Long,
-                agentInstance: Agent[Msg],
-                scheduledTime: Timepoint) extends SimEventsQueueItem[Msg]
+  case class NewAgentCreation(
+                                    id: Long,
+                                    agentInstanceCreator: AgentRef => Agent,
+                                    scheduledDeliveryTime: Timepoint) extends SimEventsQueueItem
 
-  case class PrivateEvent[Msg](
+  case class PrivateEvent(
                                 id: Long,
-                                affectedAgent: AgentId,
-                                scheduledTime: Timepoint,
-                                payload: Msg) extends SimEventsQueueItem[Msg]
+                                affectedAgent: AgentRef,
+                                scheduledDeliveryTime: Timepoint,
+                                payload: Any) extends SimEventsQueueItem
 }
 
-class QueueItemsOrdering[Msg] extends Ordering[SimEventsQueueItem[Msg]] {
-  override def compare(x: SimEventsQueueItem[Msg], y: SimEventsQueueItem[Msg]): Int = x.scheduledTime compare y.scheduledTime
+class QueueItemsOrdering extends Ordering[SimEventsQueueItem] {
+  override def compare(x: SimEventsQueueItem, y: SimEventsQueueItem): Int = x.scheduledDeliveryTime compare y.scheduledDeliveryTime
 }
 
 

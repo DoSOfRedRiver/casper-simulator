@@ -1,7 +1,7 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
 import io.casperlabs.sim.BaseSpec
-import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
+import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace, MockingSpace}
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorState.UnconsumedBlockRewardInfo
@@ -56,22 +56,21 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   val ee = new DefaultExecutionEngine(config, computingSpace)
   val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](ee, config)
   val random = new Random(42) //fixed seed, so tests are deterministic
-  val blockIdGen = new FakeHashGenerator(random)
   val gasPrice: Ether = 1
 
   //#################################### GENESIS GLOBAL STATE #################################
 
-  val account1 = 1
-  val account2 = 2
-  val account3 = 3
-  val account4 = 4
-  val account5 = 5
+  val account1: Account = 1
+  val account2: Account = 2
+  val account3: Account = 3
+  val account4: Account = 4
+  val account5: Account = 5
 
-  val validator1 = 101 //bonded since genesis; making the initial sequence of blocks
-  val validator2 = 102 //bonded since genesis; testing accumulating and consuming rewards
-  val validator3 = 103 //bonded since genesis but with zero stake; should be recognized as "inactive" and not break the logic
-  val validator4 = 104 //new validator that attempts to join the club
-  val validator5 = 105 //bonded since genesis; never making a block and so at some point missing his rewards
+  val validator1: ValidatorId = "v101" //bonded since genesis; making the initial sequence of blocks
+  val validator2: ValidatorId = "v102" //bonded since genesis; testing accumulating and consuming rewards
+  val validator3: ValidatorId = "v103" //bonded since genesis but with zero stake; should be recognized as "inactive" and not break the logic
+  val validator4: ValidatorId = "v104" //new validator that attempts to join the club
+  val validator5: ValidatorId = "v105" //bonded since genesis; never making a block and so at some point missing his rewards
 
   val accountsRegistry = new AccountsRegistry(
     Map (
@@ -175,7 +174,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
   //#################################### BLOCKS #################################
 
-  val genesis = Genesis.generate("casperlabs", ee.globalStateHash(genesisGlobalState))
+  val genesis = Block.generateGenesisBlock("casperlabs", genesisGlobalState.validatorsBook.validatorWeightsMap, ee.globalStateHash(genesisGlobalState))
 
   def makeBlock(creator: ValidatorId, parent: Block, postStateOfParent: GlobalState[MS], tx: Transaction): (Block, GlobalState[MS]) = {
     val pTimeOfThisBlock = parent.pTime + parent.gasBurned
@@ -191,6 +190,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
       transactions = IndexedSeq(tx),
       pTime = parent.pTime + parent.gasBurned,
       gasBurned = gasBurned,
+      postState.validatorsBook.validatorWeightsMap,
       preStateHash = ee.globalStateHash(postStateOfParent),
       postStateHash = ee.globalStateHash(postState)
     )

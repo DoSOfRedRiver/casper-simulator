@@ -1,7 +1,5 @@
 package io.casperlabs.sim.simulation_framework
 
-import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
-
 /**
   * Agent's reference. This is like an "address" (pointer) of an agent on the arena of agents.
   * Agents are identified by AgentRef for the purpose of agent-to-agent communication.
@@ -10,7 +8,7 @@ import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
   * We keep the agent references abstract, so that engine implementations can provide convenient
   * implementation (which may be especially important for clustered implementations of the engine.
   */
-trait AgentId {
+trait AgentRef {
 
   /**
     * Message send syntactic sugar.
@@ -18,12 +16,11 @@ trait AgentId {
     *
     * @param msg
     * @param syntaxMagic
-    * @tparam Msg
     * @return
     */
-  def !![Msg](msg: Msg)(implicit syntaxMagic: MessageSendingSupport): Agent.OutgoingMsgEnvelope[Msg] = syntaxMagic.tell(this, msg)
+  def !!(msg: Any)(implicit syntaxMagic: MessageSendingSupport): Unit = syntaxMagic.tell(this, msg)
 
 
-  def ??[Msg](msg: Msg)(callback: Msg => MsgHandlingResult[Msg])(implicit syntaxMagic: MessageSendingSupport): Agent.OutgoingMsgEnvelope[Msg] = syntaxMagic.tell(this, msg)
+  def ??[Msg](msg: Any)(implicit syntaxMagic: MessageSendingSupport): MessageSendingSupport.FutureResponse[Any] = syntaxMagic.ask(this, msg)
 
 }

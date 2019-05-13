@@ -11,7 +11,7 @@ import io.casperlabs.sim.simulation_framework.NetworkBehavior
   *   3. pools the external events stream
   *   4. dispatches work across wrapper actors (in a way that ensures no causality violation will happen).
   */
-class DispatcherActor[MsgPayload](networkBehavior: NetworkBehavior[MsgPayload], initialCollectionOfAgents: Iterable[Actor]) extends Actor {
+class DispatcherActor[MsgPayload](networkBehavior: NetworkBehavior, initialCollectionOfAgents: Iterable[Actor]) extends Actor {
 
   override def receive: Receive = ???
 

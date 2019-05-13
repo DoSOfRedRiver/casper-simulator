@@ -1,5 +1,7 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
+import io.casperlabs.sim.abstract_blockchain.{BlockId, ValidatorId}
+
 /**
   * Transaction (to be executed) on the blockchain computer.
   */

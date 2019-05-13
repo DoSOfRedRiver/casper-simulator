@@ -1,6 +1,8 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
+import io.casperlabs.sim.abstract_blockchain.{BlockId, ValidatorId}
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorState.UnconsumedBlockRewardInfo
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 import scala.collection.immutable.Queue
 
@@ -51,6 +53,19 @@ private[execution_engine] class ValidatorState private (
   def resetUnconsumedBlockRewards: ValidatorState = new ValidatorState(id, account, stake, bondingEscrow, unbondingEscrow, Queue.empty[UnconsumedBlockRewardInfo])
 
   def isReadyToBeForgotten: Boolean = stake == 0 && bondingEscrow == 0 && unbondingEscrow == 0
+
+  def updateDigest(digester: CryptographicDigester): Unit = {
+    digester.updateWith(id)
+    digester.updateWith(account)
+    digester.updateWith(stake)
+    digester.updateWith(bondingEscrow)
+    digester.updateWith(unbondingEscrow)
+    for (item <- unconsumedBlockRewards) {
+      digester.updateWith(item.amount)
+      digester.updateWithHash(item.blockId)
+      digester.updateWith(item.pTimeWhenEarned)
+    }
+  }
 
 }
 

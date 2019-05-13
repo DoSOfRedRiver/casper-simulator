@@ -1,7 +1,6 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
-import io.casperlabs.sim.blockchain_components.hashing.Hash
 
 /**
   * Representation of the state of blockchain computer.
@@ -41,7 +40,7 @@ case class GlobalState[MS](memoryState: MS, accounts: AccountsRegistry, validato
 
   def updateAccountBalance(account: Account, delta: Ether): GlobalState[MS] = GlobalState(memoryState, accounts.updateBalance(account, delta), validatorsBook)
 
-  def updateAccountBalances(updates: Map[ValidatorId, Ether]): GlobalState[MS] = GlobalState(memoryState, accounts.updateBalances(updates), validatorsBook)
+  def updateAccountBalances(updates: Map[Account, Ether]): GlobalState[MS] = GlobalState(memoryState, accounts.updateBalances(updates), validatorsBook)
 
   def processBondingBuffers(pTime: Gas): GlobalState[MS] = {
     val bookAfterBondings = validatorsBook.processBondingQueueUpToCurrentTime(pTime)

@@ -1,7 +1,7 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
 import io.casperlabs.sim.BaseSpec
-import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
+import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.MockingSpace
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
 import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
@@ -54,9 +54,9 @@ class DefaultExecutionEngineSpec extends BaseSpec {
   val account3 = 3
   val account4 = 4
 
-  val validator1 = 101
-  val validator2 = 102
-  val validator3 = 103
+  val validator1: ValidatorId = "v101"
+  val validator2: ValidatorId = "v102"
+  val validator3: ValidatorId = "v103"
 
   val accountsRegistry = new AccountsRegistry(
     Map(

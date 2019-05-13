@@ -112,7 +112,8 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
   def globalStateHash(gs: GlobalState[MS]): Hash = {
     val digester = new RealSha256Digester
     computingSpace.updateDigestWithMemState(gs.memoryState, digester)
-    //todo: add processing of accounts and validators book
+    gs.validatorsBook.updateDigest(digester)
+    gs.accounts.updateDigest(digester)
     return digester.generateHash()
   }
 

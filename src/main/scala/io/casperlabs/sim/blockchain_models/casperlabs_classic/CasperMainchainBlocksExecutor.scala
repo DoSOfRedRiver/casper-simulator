@@ -1,15 +1,15 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, BlocksExecutor, ExecutionEngine}
+import io.casperlabs.sim.abstract_blockchain._
 import io.casperlabs.sim.blockchain_components.execution_engine._
 import io.casperlabs.sim.blockchain_components.hashing.{Hash, RealSha256Digester}
 
 /**
   * Encapsulates block-level execution logic.
   */
-class CasperMainchainBlocksExecutor[CS, P, MS](executionEngine: ExecutionEngine[MS, Transaction], config: BlockchainConfig) extends BlocksExecutor[MS, Block] {
+class CasperMainchainBlocksExecutor[CS, P, MS](executionEngine: ExecutionEngine[MS, Transaction], config: BlockchainConfig) extends BlocksExecutor[MS, NormalBlock] {
 
-  def executeBlockAsVerifier(preState: GlobalState[MS], block: Block): (GlobalState[MS], Gas) = this.executeBlockAsCreator(preState, block.pTime, block.id, block.creator, block.transactions)
+  def executeBlockAsVerifier(preState: GlobalState[MS], block: NormalBlock): (GlobalState[MS], Gas) = this.executeBlockAsCreator(preState, block.pTime, block.id, block.creator, block.transactions)
 
   def executeBlockAsCreator(preState: GlobalState[MS], pTime: Gas, blockId: BlockId, creator: ValidatorId, transactions: IndexedSeq[Transaction]): (GlobalState[MS], Gas) = {
     //cleanup block rewards queue
