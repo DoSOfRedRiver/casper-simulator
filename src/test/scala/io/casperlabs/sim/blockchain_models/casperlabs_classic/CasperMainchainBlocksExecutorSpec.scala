@@ -7,7 +7,6 @@ import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorState.UnconsumedBlockRewardInfo
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook.ActiveRewardsPaymentQueueItem
 import io.casperlabs.sim.blockchain_components.execution_engine._
-import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
 import org.scalatest.enablers.Containing._
 
 import scala.collection.immutable.Queue
@@ -66,11 +65,11 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   val account4: Account = 4
   val account5: Account = 5
 
-  val validator1: ValidatorId = "v101" //bonded since genesis; making the initial sequence of blocks
-  val validator2: ValidatorId = "v102" //bonded since genesis; testing accumulating and consuming rewards
-  val validator3: ValidatorId = "v103" //bonded since genesis but with zero stake; should be recognized as "inactive" and not break the logic
-  val validator4: ValidatorId = "v104" //new validator that attempts to join the club
-  val validator5: ValidatorId = "v105" //bonded since genesis; never making a block and so at some point missing his rewards
+  val validator1: ValidatorId = 101 //bonded since genesis; making the initial sequence of blocks
+  val validator2: ValidatorId = 102 //bonded since genesis; testing accumulating and consuming rewards
+  val validator3: ValidatorId = 103 //bonded since genesis but with zero stake; should be recognized as "inactive" and not break the logic
+  val validator4: ValidatorId = 104 //new validator that attempts to join the club
+  val validator5: ValidatorId = 105 //bonded since genesis; never making a block and so at some point missing his rewards
 
   val accountsRegistry = new AccountsRegistry(
     Map (

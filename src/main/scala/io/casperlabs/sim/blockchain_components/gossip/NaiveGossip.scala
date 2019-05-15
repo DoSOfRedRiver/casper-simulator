@@ -10,7 +10,7 @@ import io.casperlabs.sim.simulation_framework.{AgentRef, PluggableAgentBehaviour
   * This is going to work only if underlying Discovery service sees all other nodes as direct peers.
   * In practice this is a mock solution to be coupled with TrivialDiscovery.
   */
-class NaiveGossip(val discovery: Discovery[NodeId, AgentRef]) extends Gossip[NodeId, AgentRef] with PluggableAgentBehaviour {
+class NaiveGossip[Nid](val discovery: Discovery[Nid, AgentRef]) extends Gossip[Nid, AgentRef] with PluggableAgentBehaviour {
 
   override def gossip(msg: Any): Unit = {
     for (p <- discovery.peers)

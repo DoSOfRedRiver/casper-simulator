@@ -11,15 +11,15 @@ import io.casperlabs.sim.blockchain_components.discovery.Discovery
   *
   * Caution: instance of Gossip is supposed to run in the context of a single node (=agent).
   *
-  * @tparam Id Identity type of nodes in the network (see Discovery documentation)
+  * @tparam Nid Identity type of nodes in the network (see Discovery documentation)
   * @tparam Endpoint Type for endpoints of node-to-node communication (see Discovery Documentation)
   */
-trait Gossip[Id, Endpoint] {
+trait Gossip[Nid, Endpoint] {
 
   /**
     * Discovery instance used by this gossip.
     */
-  def discovery: Discovery[Id, Endpoint]
+  def discovery: Discovery[Nid, Endpoint]
 
   //todo: figure out if we really need direct messaging to exist on this level (?)
 //  def direct(peer: Endpoint, msg: MsgPayload): Gossip.Response[MsgPayload]

@@ -5,12 +5,12 @@ package io.casperlabs.sim.simulation_framework
   * We are simulating a network of agents communicating via message-passing and exposed to a stream of external events.
   * The simulation runs in virtualised time.
   */
-trait Simulation {
+trait Simulation[R] {
 
   def currentTime(): Timepoint
 
   def start(
              externalEventsGenerator: ExternalEventsStream,
-             agentsCreationStream: AgentsCreationStream
+             agentsCreationStream: AgentsCreationStream[R]
            ): Unit
 }

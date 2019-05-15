@@ -8,7 +8,7 @@ import io.casperlabs.sim.simulation_framework.Agent.OutgoingMsgEnvelope
   *
   * todo: CAUTION - this class is experimental
   */
-abstract class AbstractAgentAkkaStyle(val ref: AgentRef, val label: String) extends Agent {
+abstract class AbstractAgentAkkaStyle[R](val ref: AgentRef, val label: String) extends Agent[R] {
   private var arrivalTimeOfCurrentEvent: Timepoint = Timepoint(0)
   private var currentResponseDelay: TimeDelta = 0L
   private var currentSender: AgentRef = ref
@@ -23,37 +23,37 @@ abstract class AbstractAgentAkkaStyle(val ref: AgentRef, val label: String) exte
     override def ask(destination: AgentRef, msg: Any): MessageSendingSupport.FutureResponse[Any] = ??? //todo: implement support for request-response calls
   }
 
-  override final def onStartup(time: Timepoint): Agent.MsgHandlingResult = {
+  override final def onStartup(time: Timepoint): Agent.MsgHandlingResult[R] = {
     arrivalTimeOfCurrentEvent = time
     this.startup()
-    return Agent.MsgHandlingResult(outgoingMessagesContainer)
+    return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
-  override final def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult = {
+  override final def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     arrivalTimeOfCurrentEvent = msg.scheduledDeliveryTime
     currentResponseDelay = 0L
     currentSender = msg.source
     this.receive(msg.payload)
-    return Agent.MsgHandlingResult(outgoingMessagesContainer)
+    return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
-  override final def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult = {
+  override final def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     arrivalTimeOfCurrentEvent = event.scheduledDeliveryTime
     currentResponseDelay = 0L
     currentSender = ref
     this.onExternalEvent(event.payload)
-    return Agent.MsgHandlingResult(outgoingMessagesContainer)
+    return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
-  override final def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult = {
+  override final def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     arrivalTimeOfCurrentEvent = event.scheduledDeliveryTime
     currentResponseDelay = 0L
     currentSender = ref
     this.onTimer(event.payload)
-    return Agent.MsgHandlingResult(outgoingMessagesContainer)
+    return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
   protected def timeOfCurrentEvent: Timepoint = arrivalTimeOfCurrentEvent

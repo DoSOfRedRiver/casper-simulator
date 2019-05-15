@@ -2,6 +2,12 @@ package io.casperlabs.sim.blockchain_components.hashing
 
 import java.security.MessageDigest
 
+/**
+  * Helper class to produce SHA-256 hashes out of anything.
+  *
+  * This is just envelope around JDK built-in MessageDigest, added for some usage convenience.
+  * Built-in MessageDigest offers only byte arrays as input.
+  */
 class RealSha256Digester extends CryptographicDigester {
   private val internalDigester: MessageDigest = MessageDigest.getInstance("SHA-256")
 

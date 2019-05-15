@@ -54,9 +54,9 @@ class DefaultExecutionEngineSpec extends BaseSpec {
   val account3 = 3
   val account4 = 4
 
-  val validator1: ValidatorId = "v101"
-  val validator2: ValidatorId = "v102"
-  val validator3: ValidatorId = "v103"
+  val validator1: ValidatorId = 101
+  val validator2: ValidatorId = 102
+  val validator3: ValidatorId = 103
 
   val accountsRegistry = new AccountsRegistry(
     Map(

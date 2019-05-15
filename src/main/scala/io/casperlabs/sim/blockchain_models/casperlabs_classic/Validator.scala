@@ -178,7 +178,7 @@ class Validator(
 
   private[this] def createAndPublishNewBlock(): Unit = {
     // TODO: check for equivocations?
-    val latestMessages: Map[ValidatorId, Block] = (jDag.tips.groupBy(_.creator) - "genesis").mapValues(_.head)
+    val latestMessages: Map[ValidatorId, Block] = (jDag.tips.groupBy(_.creator) - Block.psuedoValidatorIdUsedForGenesisBlock).mapValues(_.head)
 
     val selectedParentBlock: Block = BlockdagUtils.lmdMainchainGhost[ValidatorId, Block, Hash](
       latestMessages,

@@ -1,7 +1,7 @@
 package io.casperlabs.sim.data_generators
 
+import io.casperlabs.sim.abstract_blockchain.NodeId
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
-import io.casperlabs.sim.blockchain_components.execution_engine.NodeId
 
 /**
   * Generates random transactions.

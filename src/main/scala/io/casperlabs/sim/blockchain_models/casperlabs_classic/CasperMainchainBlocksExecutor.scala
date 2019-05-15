@@ -36,15 +36,15 @@ class CasperMainchainBlocksExecutor[CS, P, MS](executionEngine: ExecutionEngine[
     digester.updateWith(creator)
     digester.updateWith(0x01.toByte)
     for (p <- parents)
-      digester.updateWithHash(p)
+      digester.updateWith(p)
     digester.updateWith(0x02.toByte)
     for (j <- justifications)
-      digester.updateWithHash(j)
+      digester.updateWith(j)
     digester.updateWith(0x03.toByte)
     for (tx <- transactions)
       executionEngine.updateDigest(tx, digester)
     digester.updateWith(0x04.toByte)
-    digester.updateWithHash(preStateHash)
+    digester.updateWith(preStateHash)
     return digester.generateHash()
   }
 

@@ -1,22 +1,28 @@
 package io.casperlabs.sim.blockchain_components.graphs
 
 import scala.collection.mutable
-import collection.mutable.{ HashMap, MultiMap, Set }
+import scala.collection.mutable.{Set => MutableSet}
+import scala.collection.immutable.{Set => ImmutableSet}
 
 /**
-  * Represents two-argument relations (= subsets of cartesian product AxB).
-  * This can also be seen as sparse matrix.
+  * Represents two-argument relation (= subset of the cartesian product AxB).
+  * This implementation is mutable and not thread-safe.
+  *
+  * This can also be seen as:
+  * a) sparse matrix containing boolean values
+  * b) bidirectional mutable multimap (which is how we actually implement it)
+  * c) directed bipartite (pair (a,b) represents an arrow a->b)
+  * d) just directed graph (when taking type A = type B)
+  *
   * Technically this is equivalent to mutable.Set[(A,B)], but we do smart indexing, so to have
-  * rows and columns access with O(1) complexity.
-  * Also can be seen as bidirectional (mutable) multimap.
-  * Also can be seen as directed graph representation.
+  * rows and columns access with O(1).
   *
   * Because relations generalize functions, type A is like "domain" and type B is like "codomain".
   * Elements in A we call 'sources', elements in B we call 'targets'.
   */
 class IndexedTwoArgRelation[A,B] {
-  private val ab = new mutable.HashMap[A, Set[B]] with mutable.MultiMap[A,B]
-  private val ba = new mutable.HashMap[B, Set[A]] with mutable.MultiMap[B,A]
+  private val ab = new mutable.HashMap[A, MutableSet[B]] with mutable.MultiMap[A,B]
+  private val ba = new mutable.HashMap[B, MutableSet[A]] with mutable.MultiMap[B,A]
 
   def addPair(a: A, b: B): Unit = {
     ab.addBinding(a,b)
@@ -44,18 +50,17 @@ class IndexedTwoArgRelation[A,B] {
 
   def findTargetsFor(source: A): Iterable[B] =
     ab.get(source) match {
-      case Some(set) => set
-      case None => Set.empty
+      case Some(set) => set.toSeq //we want the result to be a copy (so detached from the mutable original)
+      case None => ImmutableSet.empty
     }
 
   def findSourcesFor(target: B): Iterable[A] =
     ba.get(target) match {
-      case Some(set) => set
-      case None => Set.empty
+      case Some(set) => set.toSeq //we want the result to be a copy (so detached from the mutable original)
+      case None => ImmutableSet.empty
     }
 
   def hasSource(a: A): Boolean = ab.contains(a)
 
   def hasTarget(b: B): Boolean = ba.contains(b)
-
 }

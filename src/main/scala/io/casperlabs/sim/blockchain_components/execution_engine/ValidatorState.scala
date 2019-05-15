@@ -62,7 +62,7 @@ private[execution_engine] class ValidatorState private (
     digester.updateWith(unbondingEscrow)
     for (item <- unconsumedBlockRewards) {
       digester.updateWith(item.amount)
-      digester.updateWithHash(item.blockId)
+      digester.updateWith(item.blockId)
       digester.updateWith(item.pTimeWhenEarned)
     }
   }

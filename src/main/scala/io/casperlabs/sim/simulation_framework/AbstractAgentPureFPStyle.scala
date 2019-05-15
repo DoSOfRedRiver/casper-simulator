@@ -20,43 +20,43 @@ import io.casperlabs.sim.simulation_framework.Agent.OutgoingMsgEnvelope
   *
   * todo: CAUTION - this class is experimental
   */
-abstract class AbstractAgentPureFPStyle[State](val ref: AgentRef, val label: String, val initialState: State) extends Agent {
+abstract class AbstractAgentPureFPStyle[State, R](val ref: AgentRef, val label: String, val initialState: State) extends Agent[R] {
   private var currentState: State = initialState
 
   /**
     * Called by the engine only once - when this agent starts his life.
     */
-  override def onStartup(time: Timepoint): Agent.MsgHandlingResult = {
+  override def onStartup(time: Timepoint): Agent.MsgHandlingResult[R] = {
     val (messages, newState)  = this.startup(time)
     currentState = newState
-    Agent.MsgHandlingResult(messages)
+    Agent.MsgHandlingResult(messages, Nil)
   }
 
   /**
     * Handler of incoming agent-to-agent messages.
     */
-  override def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult = {
+  override def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult[R] = {
     val (messages, newState)  = this.receive(msg.scheduledDeliveryTime, msg.source, msg.payload)
     currentState = newState
-    Agent.MsgHandlingResult(messages)
+    Agent.MsgHandlingResult(messages, Nil)
   }
 
   /**
     * Handler of incoming external events.
     */
-  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult = {
+  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult[R] = {
     val (messages, newState)  = this.onExternalEvent(event.scheduledDeliveryTime, event.payload)
     currentState = newState
-    Agent.MsgHandlingResult(messages)
+    Agent.MsgHandlingResult(messages, Nil)
   }
 
   /**
     * Handler of incoming private events (= alerts I set for myself)
     */
-  override def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult = {
+  override def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult[R] = {
     val (messages, newState)  = this.onTimer(event.scheduledDeliveryTime, event.payload)
     currentState = newState
-    Agent.MsgHandlingResult(messages)
+    Agent.MsgHandlingResult(messages, Nil)
   }
 
   /**

@@ -6,12 +6,12 @@ import io.casperlabs.sim.simulation_framework._
 
 import scala.collection.mutable
 
-class SimulationImpl(preexistingAgents: Iterable[AgentRef => Agent], simulationEnd: Timepoint, networkBehavior: NetworkBehavior) extends Simulation {
+class SimulationImpl[R](preexistingAgents: Iterable[AgentRef => Agent[R]], simulationEnd: Timepoint, networkBehavior: NetworkBehavior) extends Simulation[R] {
 
-  private val queue = new SimEventsQueue
-  private val agentsRegistry = new mutable.HashMap[AgentRef, Agent]
+  private val queue: SimEventsQueue[R] = new SimEventsQueue
+  private val agentsRegistry = new mutable.HashMap[AgentRef, Agent[R]]
   private var clock: Timepoint = Timepoint(0L)
-  private val agentIdGenerator = Iterator.iterate(0L)(_ + 1L)
+  private val agentIdGenerator = Iterator.iterate(0)(_ + 1)
   private val msgIdGenerator = Iterator.iterate(0L)(_ + 1L)
 
   for (creator <- preexistingAgents) {
@@ -23,7 +23,7 @@ class SimulationImpl(preexistingAgents: Iterable[AgentRef => Agent], simulationE
 
   override def start(
                       externalEventsGenerator: ExternalEventsStream,
-                      agentsCreationStream: AgentsCreationStream
+                      agentsCreationStream: AgentsCreationStream[R]
                     ): Unit = {
     queue.plugInAgentsCreationStream(agentsCreationStream)
     queue.plugInExternalEventsStream(externalEventsGenerator)
@@ -38,28 +38,28 @@ class SimulationImpl(preexistingAgents: Iterable[AgentRef => Agent], simulationE
           event match {
             case msg: AgentToAgentMsg =>
               val agent = unsafeGetAgent(msg.destination, msg)
-              val processingResult: MsgHandlingResult = agent.handleMessage(msg)
+              val processingResult: MsgHandlingResult[R] = agent.handleMessage(msg)
               applyEventProcessingResultToSimState(msg.destination, processingResult)
 
             case ev: ExternalEvent =>
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
-              val processingResult: MsgHandlingResult = agent.handleExternalEvent(ev)
+              val processingResult: MsgHandlingResult[R] = agent.handleExternalEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
 
-            case ev: NewAgentCreation =>
+            case ev: NewAgentCreation[R] =>
               val agent = createAndRegisterAgent(ev.agentInstanceCreator)
               agent.onStartup(ev.scheduledDeliveryTime)
 
             case ev: PrivateEvent =>
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
-              val processingResult: MsgHandlingResult = agent.handlePrivateEvent(ev)
+              val processingResult: MsgHandlingResult[R] = agent.handlePrivateEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
           }
       }
     }
   }
 
-  def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult): Unit = {
+  def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult[R]): Unit = {
     for (item <- processingResult.outgoingMessages) {
       val sendingTimepoint = clock + item.relativeTimeOfSendingThisMessage
 
@@ -93,30 +93,23 @@ class SimulationImpl(preexistingAgents: Iterable[AgentRef => Agent], simulationE
     }
   }
 
-  private def createAndRegisterAgent(agentCreator: AgentRef => Agent): Agent = {
+  private def createAndRegisterAgent(agentCreator: AgentRef => Agent[R]): Agent[R] = {
     val agentRef: AgentRef = AgentRefImpl(this.nextAgentId())
-    val agentInstance: Agent = agentCreator(agentRef)
+    val agentInstance: Agent[R] = agentCreator(agentRef)
     agentsRegistry += (agentRef -> agentInstance)
     return agentInstance
   }
 
-  private[this] def unsafeGetAgent(agentId: AgentRef, event: SimEventsQueueItem): Agent =
+  private[this] def unsafeGetAgent(agentId: AgentRef, event: SimEventsQueueItem): Agent[R] =
     agentsRegistry.get(agentId) match {
       case Some(x) => x
       case None => throw new RuntimeException(s"unknown agent id $agentId encountered when processing event: $event")
     }
 
 
-  private def nextAgentId(): Long = agentIdGenerator.next()
+  private def nextAgentId(): Int = agentIdGenerator.next()
 
   private def nextMsgId(): Long = msgIdGenerator.next()
-
-
-  //  private def findAgent(id: AgentId): Agent = agents.get(id) match {
-//    case Some(agent) => agent
-//    case None => throw new RuntimeException(s"unknown agent id $id encountered as destination of message ${}")
-//  }
-
 
 }
 

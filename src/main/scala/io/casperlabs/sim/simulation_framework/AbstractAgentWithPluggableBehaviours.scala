@@ -6,7 +6,7 @@ import io.casperlabs.sim.simulation_framework.Agent.OutgoingMsgEnvelope
   * Abstract base class for agents that follow "akka" style.
   * We provide explicit stackable/pluggable in-agent components mechanics.
   */
-abstract class AbstractAgentWithPluggableBehaviours(val ref: AgentRef, val label: String, plugins: List[PluggableAgentBehaviour]) extends Agent {
+abstract class AbstractAgentWithPluggableBehaviours[R](val ref: AgentRef, val label: String, plugins: List[PluggableAgentBehaviour]) extends Agent[R] {
   private var arrivalTimeOfCurrentEvent: Timepoint = Timepoint(0)
   private var currentMsgProcessingClock: TimeDelta = 0L
   private var currentSender: AgentRef = ref
@@ -45,24 +45,24 @@ abstract class AbstractAgentWithPluggableBehaviours(val ref: AgentRef, val label
   for (p <- plugins)
     p.initContext(pluginContext)
 
-  override final def onStartup(time: Timepoint): Agent.MsgHandlingResult = {
+  override final def onStartup(time: Timepoint): Agent.MsgHandlingResult[R] = {
     arrivalTimeOfCurrentEvent = time
     for (p <- plugins)
       p.startup()
-    return Agent.MsgHandlingResult(outgoingMessagesContainer)
+    return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil) //todo: provide support for recording, i.e. replace Nil with actual items to be recorded
   }
 
-  override final def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult =
+  override final def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult[R] =
     handleEvent(msg.scheduledDeliveryTime, msg.source){
       p => p.receive(msg.source, msg.payload)
     }
 
-  override final def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult =
+  override final def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult[R] =
     handleEvent(event.scheduledDeliveryTime, ref){
       p => p.onExternalEvent(event.payload)
     }
 
-  override final def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult =
+  override final def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult[R] =
     handleEvent(event.scheduledDeliveryTime, ref){
       p => p.onTimer(event.payload)
     }
@@ -71,13 +71,13 @@ abstract class AbstractAgentWithPluggableBehaviours(val ref: AgentRef, val label
 
   protected def virtualTime: Timepoint = arrivalTimeOfCurrentEvent + currentMsgProcessingClock
 
-  private def handleEvent(deliveryTime: Timepoint, senderToBeUsed: AgentRef)(action: PluggableAgentBehaviour => Boolean): Agent.MsgHandlingResult = {
+  private def handleEvent(deliveryTime: Timepoint, senderToBeUsed: AgentRef)(action: PluggableAgentBehaviour => Boolean): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     arrivalTimeOfCurrentEvent = deliveryTime
     currentMsgProcessingClock = 0L
     currentSender = senderToBeUsed
     handleWithPluginsStack(action)
-    return Agent.MsgHandlingResult(outgoingMessagesContainer)
+    return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil) //todo: provide support for recording, i.e. replace Nil with actual items to be recorded
   }
 
   private def handleWithPluginsStack(action: PluggableAgentBehaviour => Boolean): Unit = {

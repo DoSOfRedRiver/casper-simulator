@@ -24,9 +24,9 @@ object SimEventsQueueItem {
                                  scheduledDeliveryTime: Timepoint,
                                  payload: Any) extends SimEventsQueueItem
 
-  case class NewAgentCreation(
+  case class NewAgentCreation[R](
                                     id: Long,
-                                    agentInstanceCreator: AgentRef => Agent,
+                                    agentInstanceCreator: AgentRef => Agent[R],
                                     scheduledDeliveryTime: Timepoint) extends SimEventsQueueItem
 
   case class PrivateEvent(

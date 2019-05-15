@@ -30,7 +30,7 @@ case class Genesis private (id: BlockId, weightsMap: Map[ValidatorId, Ether], po
   override def transactions: IndexedSeq[Transaction] = IndexedSeq.empty
   override def pTime = 0
   override def gasBurned: Gas = 0
-  override def creator: ValidatorId = "genesis" //todo: remove this hack !
+  override def creator: ValidatorId = Block.psuedoValidatorIdUsedForGenesisBlock //todo: refactoring around DAG processing is needed to remove the need for fake validator id in this place
 }
 
 /**
@@ -58,6 +58,8 @@ object Block {
     val blockId = digester.generateHash()
     return Genesis(blockId, weightsMap, postStateHash)
   }
+
+  val psuedoValidatorIdUsedForGenesisBlock: ValidatorId = -1
 
 }
 

@@ -307,11 +307,11 @@ class ValidatorsBook private (
     for (item <- blocksWithActiveRewardsPayment) {
       digester.updateWith(item.ptime)
       digester.updateWith(item.validator)
-      digester.updateWithHash(item.block)
+      digester.updateWith(item.block)
     }
     digester.updateWith(102)
     for ((bid,eth) <- blocksRewardEscrow) {
-      digester.updateWithHash(bid)
+      digester.updateWith(bid)
       digester.updateWith(eth)
     }
     digester.updateWith(103)

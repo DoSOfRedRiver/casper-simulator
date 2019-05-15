@@ -10,12 +10,12 @@ package io.casperlabs.sim.blockchain_components.discovery
   *
   * Caution: instance of Discovery is supposed to run in the context of a single node (=agent).
   *
-  * @tparam Id The type for how nodes are identified (the production version
-  *            is a 32-byte hash of the node's public key certificate).
+  * @tparam Nid The type for how nodes are identified (the production version
+  *            is a 32-byte hash of the node's public key certificate, in simulator this is 32-byte random hash).
   * @tparam Endpoint The type for how nodes communicate with one another (the
-  *                  production version of this is a gRPC endpoint).
+  *                  production version of this is a gRPC endpoint, in simulator we use AgentRef instead).
   */
-trait Discovery[Id, Endpoint] {
+trait Discovery[Nid, Endpoint] {
 
   /**
     * Attempt finding the endpoint for a node.
@@ -23,7 +23,7 @@ trait Discovery[Id, Endpoint] {
     * @param id id of a node we are looking for
     * @return None it the attempt failed (does not mean that such a node is non-existent !)
     */
-  def lookup(id: Id): Option[Endpoint]
+  def lookup(id: Nid): Option[Endpoint]
 
   /**
     * Collection of currently known "direct" peers.
@@ -33,6 +33,6 @@ trait Discovery[Id, Endpoint] {
   /**
     * The id of a node running this instance of discovery, i.e. this is just the "local" node.
     */
-  def selfNodeId: Id
+  def selfNodeId: Nid
 
 }

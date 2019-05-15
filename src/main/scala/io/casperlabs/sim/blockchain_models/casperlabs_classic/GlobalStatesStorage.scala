@@ -9,7 +9,7 @@ import scala.collection.mutable
 /**
   * Keeps global states snapshots, addressed by hash.
   * This way we can share this storage between nodes,
-  * without a risk of violation their isolation.
+  * without a risk of violating their isolation.
   */
 class GlobalStatesStorage[MS, T](ee: ExecutionEngine[MS,T]) {
   //todo: this is MVP-level solution; to be replaced by Patricia-tree (or similar) solution - we want to utilize DAG structure
@@ -24,6 +24,5 @@ class GlobalStatesStorage[MS, T](ee: ExecutionEngine[MS,T]) {
   }
 
   def read(hash: Hash): Option[GlobalState[MS]] = storage.get(hash)
-
 
 }

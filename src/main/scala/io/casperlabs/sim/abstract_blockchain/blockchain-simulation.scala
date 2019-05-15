@@ -27,7 +27,7 @@ trait BlockchainSimulationFactory[MS] {
   *   1. Consumes stream of transaction.
   *   2. Produces 3 streams of events (= block proposals, block deliveries, block finalizations).
   */
-trait BlockchainSimulation extends Observable[SimulationOutputItem] with Observer [ScheduledDeploy] {
+trait BlockchainSimulation extends Observable[BlockchainSimulationOutputItem] with Observer [ScheduledDeploy] {
 }
 
 /**
@@ -39,15 +39,12 @@ trait BlockchainSimulation extends Observable[SimulationOutputItem] with Observe
   */
 case class ScheduledDeploy(transaction: Transaction, deliveryTimepoint: Timepoint, node: AgentRef)
 
+abstract class BlockchainSimulationOutputItem
 
-abstract class SimulationOutputItem
-
-object SimulationOutputItem {
-  case class DeployWasDelivered(time: Timepoint, targetNode: NodeId, transaction: Transaction) extends SimulationOutputItem
-  case class NewNodeJoinedTheNetwork(node: NodeId) extends SimulationOutputItem
-  case class BlockWasAnnouncedViaProposed[B <: AbstractBlock](time: Timepoint, origin: NodeId, block: B) extends SimulationOutputItem
-  case class NewBlockWasDeliveredViaGossip(time: Timepoint, nodeId: NodeId, blockId: BlockId) extends SimulationOutputItem
-  case class BlockWasFinalized(time: Timepoint, nodeIdThatRecognizedFinalization: NodeId, block: BlockId) extends SimulationOutputItem
-  case class AgentMessageWasSent(time: Timepoint, message: Any) extends SimulationOutputItem
-  case class AgentMessageWasDelivered(time: Timepoint, message: Any) extends SimulationOutputItem
+object BlockchainSimulationOutputItem {
+  case class DeployWasDelivered(time: Timepoint, targetNode: NodeId, transaction: Transaction) extends BlockchainSimulationOutputItem
+  case class NewNodeJoinedTheNetwork(node: NodeId) extends BlockchainSimulationOutputItem
+  case class BlockWasAnnouncedViaProposed[B <: AbstractBlock](time: Timepoint, origin: NodeId, block: B) extends BlockchainSimulationOutputItem
+  case class NewBlockWasDeliveredViaGossip(time: Timepoint, nodeId: NodeId, blockId: BlockId) extends BlockchainSimulationOutputItem
+  case class BlockWasFinalized(time: Timepoint, nodeIdThatRecognizedFinalization: NodeId, block: BlockId) extends BlockchainSimulationOutputItem
 }

@@ -10,7 +10,7 @@ import io.casperlabs.sim.simulation_framework.Agent.OutgoingMsgEnvelope
   *
   * todo: CAUTION - this class is experimental
   */
-abstract class AbstractAgentErlangStyle[State](val ref: AgentRef, val label: String, val initialState: State) extends Agent {
+abstract class AbstractAgentErlangStyle[State, R](val ref: AgentRef, val label: String, val initialState: State) extends Agent[R] {
   private var currentState: State = initialState
   private var outgoingMessagesContainer: List[OutgoingMsgEnvelope] = List.empty
   private var currentResponseDelay: TimeDelta = 0L
@@ -27,41 +27,41 @@ abstract class AbstractAgentErlangStyle[State](val ref: AgentRef, val label: Str
   /**
     * Called by the engine only once - when this agent starts his life.
     */
-  override def onStartup(time: Timepoint): Agent.MsgHandlingResult = {
+  override def onStartup(time: Timepoint): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     currentResponseDelay = 0L
     currentState = this.startup(time)
-    Agent.MsgHandlingResult(outgoingMessagesContainer)
+    Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
   /**
     * Handler of incoming agent-to-agent messages.
     */
-  override def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult = {
+  override def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     currentResponseDelay = 0L
     currentState = this.receive(msg.scheduledDeliveryTime, msg.source, msg.payload)
-    Agent.MsgHandlingResult(outgoingMessagesContainer)
+    Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
   /**
     * Handler of incoming external events.
     */
-  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult = {
+  override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     currentResponseDelay = 0L
     currentState = this.onExternalEvent(event.scheduledDeliveryTime, event.payload)
-    Agent.MsgHandlingResult(outgoingMessagesContainer)
+    Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
   /**
     * Handler of incoming private events (= alerts I set for myself)
     */
-  override def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult = {
+  override def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): Agent.MsgHandlingResult[R] = {
     outgoingMessagesContainer = List.empty
     currentResponseDelay = 0L
     currentState = this.onTimer(event.scheduledDeliveryTime, event.payload)
-    Agent.MsgHandlingResult(outgoingMessagesContainer)
+    Agent.MsgHandlingResult(outgoingMessagesContainer, Nil)
   }
 
   /**

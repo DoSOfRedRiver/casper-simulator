@@ -64,11 +64,11 @@ object MainchainPOC {
   val account4: Account = 4
   val account5: Account = 5
 
-  val validator1: ValidatorId = "v101"
-  val validator2: ValidatorId = "v102"
-  val validator3: ValidatorId = "v103"
-  val validator4: ValidatorId = "v104"
-  val validator5: ValidatorId = "v105"
+  val validator1: ValidatorId = 101
+  val validator2: ValidatorId = 102
+  val validator3: ValidatorId = 103
+  val validator4: ValidatorId = 104
+  val validator5: ValidatorId = 105
 
   val mapOfInitialAccounts = Map (
     account1 -> 100000L,
@@ -108,7 +108,7 @@ object MainchainPOC {
     dropRate = 0.0
   )
 
-  val agents = (1 to 5) map { i =>  (agentRef: AgentRef) => buildNewValidatorNode(i, agentRef)  }
+//  val agents = (1 to 5) map { i =>  (agentRef: AgentRef) => buildNewValidatorNode(i, agentRef)  }
 
 
   def buildNewValidatorNode(nodeId: NodeId, agentRef: AgentRef): ValidatorNode = ???

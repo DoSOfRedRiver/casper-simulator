@@ -1,11 +1,12 @@
 package io.casperlabs.sim.simulation_framework
 
+import io.casperlabs.sim.abstract_blockchain.BlockchainSimulationOutputItem
 import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
 
 /**
   * Represents a participant of the simulated network.
   */
-trait Agent {
+trait Agent[+R] {
 
   /**
     * My reference (given by the engine).
@@ -23,28 +24,28 @@ trait Agent {
   /**
     * Called by the engine only once - when this agent starts his life.
     */
-  def onStartup(time: Timepoint): MsgHandlingResult
+  def onStartup(time: Timepoint): MsgHandlingResult[R]
 
   /**
     * Handler of incoming agent-to-agent messages.
     */
-  def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): MsgHandlingResult
+  def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): MsgHandlingResult[R]
 
   /**
     * Handler of incoming external events.
     */
-  def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): MsgHandlingResult
+  def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): MsgHandlingResult[R]
 
   /**
     * Handler of incoming private events (= alerts I set for myself)
     */
-  def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): MsgHandlingResult
+  def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): MsgHandlingResult[R]
 
 }
 
 object Agent {
 
-  case class MsgHandlingResult(outgoingMessages: List[OutgoingMsgEnvelope])
+  case class MsgHandlingResult[+R](outgoingMessages: List[OutgoingMsgEnvelope], simRecordingItems: List[R])
 
   //encodes stuff that agents produce as a result of handling a message
   //it is the sim engine role to transform them to actual SimEventsQueue items
@@ -61,7 +62,7 @@ object Agent {
 
 
   object MsgHandlingResult {
-    def empty: MsgHandlingResult = MsgHandlingResult(Nil)
+    def empty: MsgHandlingResult[Nothing] = MsgHandlingResult[Nothing](Nil, Nil)
   }
 
 }

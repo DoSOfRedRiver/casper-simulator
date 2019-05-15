@@ -21,12 +21,12 @@ import scala.collection.mutable
   * @tparam MsgPayload
   * @tparam ExtEventPayload
   */
-class SimEventsQueue {
+class SimEventsQueue[R] {
   private implicit val queueItemsOrdering: Ordering[SimEventsQueueItem] = new QueueItemsOrdering
   private val queue = new mutable.PriorityQueue[SimEventsQueueItem]
   private var numberOfQueuedAgentMessages: Int = 0
   private var extEvents: Option[ExternalEventsStream] = None
-  private var createEvents: Option[AgentsCreationStream] = None
+  private var createEvents: Option[AgentsCreationStream[R]] = None
   private var latestAgentMsgTimepoint: Timepoint = Timepoint(0)
   private var latestExtEventTimepoint: Timepoint = Timepoint(0)
   private var latestAgentCreationTimepoint: Timepoint = Timepoint(0)
@@ -36,7 +36,7 @@ class SimEventsQueue {
     ensureExtEventsAreGeneratedUpTo(latestAgentMsgTimepoint)
   }
 
-  def plugInAgentsCreationStream(agentsCreationStream: AgentsCreationStream): Unit = {
+  def plugInAgentsCreationStream(agentsCreationStream: AgentsCreationStream[R]): Unit = {
     createEvents = Some(agentsCreationStream)
     ensureAgentCreationsAreGeneratedUpTo(latestAgentMsgTimepoint)
   }
@@ -94,7 +94,7 @@ class SimEventsQueue {
     }
   }
 
-  private def generateNextAgentCreationEvent(agentsCreationStream: AgentsCreationStream): Unit = {
+  private def generateNextAgentCreationEvent(agentsCreationStream: AgentsCreationStream[R]): Unit = {
     if (agentsCreationStream.hasNext) {
       val event = agentsCreationStream.next()
       queue.enqueue(event)
