@@ -10,10 +10,26 @@ import io.casperlabs.sim.simulation_framework.Agent.OutgoingMsgEnvelope
   *
   * todo: CAUTION - this class is experimental
   */
-abstract class AbstractAgentErlangStyle[State, R](val ref: AgentRef, val label: String, val initialState: State) extends Agent[R] {
+abstract class AbstractAgentErlangStyle[State, R](val label: String, val initialState: State) extends Agent[R] {
+  private var privateRef: Option[AgentRef] = None
+  private var context: Option[AgentContext] = None
   private var currentState: State = initialState
   private var outgoingMessagesContainer: List[OutgoingMsgEnvelope] = List.empty
   private var currentResponseDelay: TimeDelta = 0L
+
+  override def initRef(r: AgentRef): Unit = {
+    privateRef match {
+      case Some(_) => throw new RuntimeException("attempted to re-set agent id")
+      case None =>
+        privateRef = Some(r)
+    }
+  }
+
+  override def ref: AgentRef = privateRef.get
+
+  override def initContext(c: AgentContext): Unit = {
+    context = Some(c)
+  }
 
   protected implicit val syntaxMagic: MessageSendingSupport = new MessageSendingSupport {
 

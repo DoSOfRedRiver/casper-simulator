@@ -5,8 +5,7 @@ package io.casperlabs.sim.simulation_framework
   * Agents are identified by AgentRef for the purpose of agent-to-agent communication.
   * It means that an agent needs an AgentRef instance to be able to send a message to another agent.
   *
-  * We keep the agent references abstract, so that engine implementations can provide convenient
-  * implementation (which may be especially important for clustered implementations of the engine.
+  * We keep the agent references abstract, so that engine implementations can introduce engine-specific refs.
   */
 trait AgentRef {
 

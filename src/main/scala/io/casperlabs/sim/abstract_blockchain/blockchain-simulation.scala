@@ -20,12 +20,7 @@ trait BlockchainSimulationFactory[MS] {
 
 /**
   * Abstraction of a blockchain simulation (as seen in the simulator).
-  * We need this level of abstraction to compare different blockchain implementations.
-  *
-  * This is a stateful, process-like entity (can be controlled by starting-pausing-stopping.
-  * When it runs, it:
-  *   1. Consumes stream of transaction.
-  *   2. Produces 3 streams of events (= block proposals, block deliveries, block finalizations).
+  * We need this level of abstraction to be able to compare different blockchain implementations.
   */
 trait BlockchainSimulation extends Observable[BlockchainSimulationOutputItem] with Observer [ScheduledDeploy] {
 }
@@ -37,7 +32,7 @@ trait BlockchainSimulation extends Observable[BlockchainSimulationOutputItem] wi
   * @param deliveryTimepoint scheduled timepoint of delivery
   * @param node target node
   */
-case class ScheduledDeploy(transaction: Transaction, deliveryTimepoint: Timepoint, node: AgentRef)
+case class ScheduledDeploy(id: Long, transaction: Transaction, deliveryTimepoint: Timepoint, node: AgentRef)
 
 abstract class BlockchainSimulationOutputItem
 

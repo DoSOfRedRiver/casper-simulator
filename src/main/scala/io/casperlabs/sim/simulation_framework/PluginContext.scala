@@ -9,4 +9,5 @@ trait PluginContext {
   def sendMsg(destination: AgentRef, msg: Any)
   def setTimerEvent(delay: TimeDelta, msg: Any)
   def messageSendingSupport: MessageSendingSupport
+  def findAgent(label: String): Option[AgentRef]
 }

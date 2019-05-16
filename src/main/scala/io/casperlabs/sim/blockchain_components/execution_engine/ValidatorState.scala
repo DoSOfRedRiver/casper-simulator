@@ -17,7 +17,7 @@ import scala.collection.immutable.Queue
   * @param unbondingEscrow pseudo-account where the unbonding escrow is kept (ether took from stake while appending a new unbonding request to the waiting queue)
   * @param unconsumedBlockRewards collection of block rewards this validator can claim
   */
-private[execution_engine] class ValidatorState private (
+class ValidatorState private (
                                val id: ValidatorId,
                                val account: Account,
                                val stake: Ether,

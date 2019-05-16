@@ -14,7 +14,7 @@ class RandomSelectorSpec extends BaseSpec {
 
   "random selector" should "generate stream of results with expected average frequencies" in {
     val freqMap: Map[Int, Double] = Map(0 -> 1, 1 -> 5, 2 -> 4)
-    val randomSelector = new RandomSelector(freqMap, new Random(42)) //using fixed seed so the test results are deterministic
+    val randomSelector = new RandomSelector(new Random(42), freqMap) //using fixed seed so the test results are deterministic
     val histogram = new Array[Int](3)
     val n = 1000000
     for (i <- 1 to n) {

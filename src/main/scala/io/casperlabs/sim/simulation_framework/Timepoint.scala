@@ -15,4 +15,9 @@ case class Timepoint(micros: Long) extends AnyVal with Ordered[Timepoint] {
 
 object Timepoint {
   val zero: Timepoint = Timepoint(0L)
+  def millis(n: Long): Timepoint = Timepoint(n * 1000)
+  def seconds(n: Long): Timepoint = Timepoint(n * 1000000)
+  def minutes(n: Long): Timepoint = Timepoint(n * 1000000 * 60)
+  def hours(n: Long): Timepoint = Timepoint(n * 1000000 * 60 * 60)
+  def days(n: Long): Timepoint = Timepoint(n * 1000000 * 60 * 60 * 24)
 }

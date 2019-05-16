@@ -20,8 +20,24 @@ import io.casperlabs.sim.simulation_framework.Agent.OutgoingMsgEnvelope
   *
   * todo: CAUTION - this class is experimental
   */
-abstract class AbstractAgentPureFPStyle[State, R](val ref: AgentRef, val label: String, val initialState: State) extends Agent[R] {
+abstract class AbstractAgentPureFPStyle[State, R](val label: String, val initialState: State) extends Agent[R] {
+  private var privateRef: Option[AgentRef] = None
+  private var context: Option[AgentContext] = None
   private var currentState: State = initialState
+
+  override def initRef(r: AgentRef): Unit = {
+    privateRef match {
+      case Some(_) => throw new RuntimeException("attempted to re-set agent id")
+      case None =>
+        privateRef = Some(r)
+    }
+  }
+
+  override def ref: AgentRef = privateRef.get
+
+  override def initContext(c: AgentContext): Unit = {
+    context = Some(c)
+  }
 
   /**
     * Called by the engine only once - when this agent starts his life.

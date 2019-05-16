@@ -13,7 +13,7 @@ import scala.util.Random
   * @param tag
   * @tparam T type of elements to be selected
   */
-class RandomSelector[T](freqMap: Map[T, Double], random: Random)(implicit tag: ClassTag[T]) {
+class RandomSelector[T](random: Random, freqMap: Map[T, Double])(implicit tag: ClassTag[T]) {
   //we use primitive arrays here to achieve best performance and smallest memory footprint
   private val (items, partialSums): (Array[T], Array[Double]) = this.initializeTables(freqMap)
 

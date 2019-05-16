@@ -1,6 +1,6 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ValidatorId}
+import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, NodeId, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.{BinaryArraySpace, ComputingSpace}
 import io.casperlabs.sim.blockchain_components.execution_engine.{DefaultExecutionEngine, Gas, GlobalState, Transaction}
 import io.casperlabs.sim.blockchain_components.gossip.Gossip
@@ -26,7 +26,7 @@ class Validator(
                  validatorId: ValidatorId,
                  genesisBlock: Genesis,
                  genesisGlobalState: GlobalState[BinaryArraySpace.MemoryState],
-                 gossipService: Gossip[ValidatorId, AgentRef],
+                 gossipService: Gossip[NodeId, AgentRef],
                  proposeDelay: TimeDelta,
                  globalStatesStorage: GlobalStatesStorage[BinaryArraySpace.MemoryState, Transaction]
                ) extends PluggableAgentBehaviour {

@@ -56,6 +56,8 @@ trait PluggableAgentBehaviour {
     */
   protected def thisAgent: PluginContext = context
 
+  protected def findAgent(label: String): Option[AgentRef] = context.findAgent(label)
+
   def startup(): Unit
 
   def onExternalEvent(msg: Any): Boolean

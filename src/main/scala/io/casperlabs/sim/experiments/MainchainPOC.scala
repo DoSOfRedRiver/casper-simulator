@@ -1,24 +1,62 @@
 package io.casperlabs.sim.experiments
 
-import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, NodeId, ValidatorId}
-import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace, MockingSpace}
+import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, BlockchainSimulationOutputItem, NodeId, ValidatorId}
+import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace.StatementCode
+import io.casperlabs.sim.blockchain_components.computing_spaces.{BinaryArraySpace, ComputingSpace}
+import io.casperlabs.sim.blockchain_components.discovery.TrivialDiscovery
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
 import io.casperlabs.sim.blockchain_components.execution_engine._
+import io.casperlabs.sim.blockchain_components.gossip.NaiveGossip
+import io.casperlabs.sim.blockchain_components.hashing.FakeSha256Digester
 import io.casperlabs.sim.blockchain_components.network_models.UniformNetwork
 import io.casperlabs.sim.blockchain_models.casperlabs_classic._
+import io.casperlabs.sim.data_generators.{BinaryArraySpaceProgramsGenerator, ClientsTrafficGenerator, TransactionsGenerator}
 import io.casperlabs.sim.sim_engine_sequential.SimulationImpl
+import io.casperlabs.sim.simulation_framework.SimEventsQueueItem.ExternalEvent
 import io.casperlabs.sim.simulation_framework._
+import io.casperlabs.sim.statistics.GaussDistributionParams
 
 import scala.util.Random
 
+/**
+  * Casper-Mainchain first experiment (proof-of-concept).
+  * We use hardcoded configuration here.
+  */
 object MainchainPOC {
 
-  type MS = MockingSpace.MemoryState
-  type P = MockingSpace.Program
-  type CS = ComputingSpace[P,MS]
-  type GS = GlobalState[MS]
+  //###################################### GENERAL ############################################
+
+  var numberOfValidators: Int = _
+  var numberOfValidatorsBondedAtGenesis: Int = _
+  var simulationEnd: Timepoint = _
+
+  def main(args: Array[String]): Unit = {
+    if (args.length != 4) {
+      println(s"Expected are exactly 4 command-line arguments:")
+      println(s"    number of validators [integer]")
+      println(s"    number of validators bonded at genesis [integer]")
+      println(s"    simulation length time unit [enumeration: sec, min, hou, day]")
+      println(s"    simulation length [integer")
+      System.exit(1)
+    }
+
+    numberOfValidators = args(0).toInt
+    numberOfValidatorsBondedAtGenesis = args(1).toInt
+    simulationEnd = args(2) match {
+      case "sec" => Timepoint.seconds(args(3).toLong)
+      case "min" => Timepoint.minutes(args(3).toLong)
+      case "hou" => Timepoint.hours(args(3).toLong)
+      case "day" => Timepoint.days(args(3).toLong)
+    }
+
+    this.launchSimulation()
+  }
 
   //###################################### BLOCKCHAIN CONFIG ##################################
+
+  val initialEtherPerGenesisValidator: Ether = 1000 * 1000
+  val initialStakePerGenesisValidator: Ether = 1000
+  val blockProposeDelay: TimeDelta = seconds(5)
 
   val blockchainConfig: BlockchainConfig = new BlockchainConfig {
 
@@ -49,51 +87,76 @@ object MainchainPOC {
 
   //####################### EXECUTION ENGINE & BLOCKS EXECUTOR INIT #################################
 
-  val computingSpace = MockingSpace.ComputingSpace
-  val initialMemoryState: MS = MockingSpace.MemoryState.Singleton
-  val ee = new DefaultExecutionEngine(blockchainConfig, computingSpace)
-  val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](ee, blockchainConfig)
-  val random = new Random
-  val gasPrice: Ether = 1
+  type MS = BinaryArraySpace.MemoryState
+  type P = BinaryArraySpace.Program
+  type CS = ComputingSpace[P,MS]
+  type GS = GlobalState[MS]
 
-  //#################################### GENESIS #################################
+  val computingSpace = BinaryArraySpace.ComputingSpace
+  val initialMemoryState: MS = computingSpace.initialState
+  val executionEngine = new DefaultExecutionEngine(blockchainConfig, computingSpace)
+  val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](executionEngine, blockchainConfig)
+  val sharedSourceOfRandomness = new Random
+//  val gasPrice: Ether = 1
 
-  val account1: Account = 1
-  val account2: Account = 2
-  val account3: Account = 3
-  val account4: Account = 4
-  val account5: Account = 5
+  //########################################## GENESIS ##############################################
 
-  val validator1: ValidatorId = 101
-  val validator2: ValidatorId = 102
-  val validator3: ValidatorId = 103
-  val validator4: ValidatorId = 104
-  val validator5: ValidatorId = 105
+  val accountIds: IndexedSeq[Account] = (0 until numberOfValidators).toIndexedSeq
+  val validators : IndexedSeq[ValidatorId] = (0 until numberOfValidators).map(vid => vid + 100).toIndexedSeq
+  val mapOfGenesisAccounts = accountIds.map(a => (a, AccountState(0, initialEtherPerGenesisValidator))).toMap
+  val accountsRegistry = new AccountsRegistry(mapOfGenesisAccounts)
 
-  val mapOfInitialAccounts = Map (
-    account1 -> 100000L,
-    account2 -> 100000L,
-    account3 -> 100000L,
-    account4 -> 100000L,
-    account5 -> 100000L
-  )
+  val mapOfGenesisValidators =
+    for {
+      i <- 0 until numberOfValidatorsBondedAtGenesis
+      state =
+        if (i <= numberOfValidatorsBondedAtGenesis)
+          ValidatorState.initial(validators(i), accountIds(i), initialStakePerGenesisValidator)
+        else
+          ValidatorState.initial(validators(i), accountIds(i), stake = 0)
+    }
+      yield validators(i) -> state
 
-  val accountsRegistry = new AccountsRegistry(mapOfInitialAccounts map { case (k,v) => (k, AccountState(0, v))})
-
-
-  val validatorsBook = ValidatorsBook.genesis(
-    Map(
-      validator1 -> ValidatorState.initial(validator1, account1, 500),
-      validator2 -> ValidatorState.initial(validator2, account2, 200),
-      validator3 -> ValidatorState.initial(validator3, account3, 300),
-      validator3 -> ValidatorState.initial(validator3, account3, 500),
-      validator5 -> ValidatorState.initial(validator5, account5, 400)
-    )
-  )
-
+  val validatorsBook = ValidatorsBook.genesis(mapOfGenesisValidators.toMap)
   val genesisGlobalState = GlobalState(initialMemoryState, accountsRegistry, validatorsBook)
-  val genesisPostStateHash = ee.globalStateHash(genesisGlobalState)
-  val genesisBlock = Block.generateGenesisBlock("casperlabs", genesisGlobalState.validatorsBook.validatorWeightsMap, genesisPostStateHash)
+  val genesisPostStateHash = executionEngine.globalStateHash(genesisGlobalState)
+
+  val genesisBlock = Block.generateGenesisBlock(
+    magicWord = "casperlabs",
+    genesisGlobalState.validatorsBook.validatorWeightsMap,
+    genesisPostStateHash
+  )
+
+  //################################ CLIENT TRAFFIC GENERATOR ########################################
+
+  val programsGenerator = new BinaryArraySpaceProgramsGenerator(
+    sharedSourceOfRandomness,
+    programSizeRange = GaussDistributionParams(20,10),
+    memorySize = 1000,
+    statementsFrequencyTable = Map(
+      StatementCode.addToAcc -> 1.5,
+      StatementCode.assert -> 0.002,
+      StatementCode.branch -> 0.3,
+      StatementCode.loop -> 0.05,
+      StatementCode.clearAcc -> 1,
+      StatementCode.exit -> 0.01,
+      StatementCode.flip -> 1,
+      StatementCode.nop -> 0.01,
+      StatementCode.storeAcc -> 1,
+      StatementCode.write -> 1,
+    ),
+    entanglementFactor = 0.5,
+    gasLimitToProgramSizeFactor = 2.0
+  )
+
+  val transactionsGenerator = new TransactionsGenerator(
+    sharedSourceOfRandomness,
+    gasPriceInterval = (10, 50),
+    computingSpaceProgramsGenerator = programsGenerator,
+    initialAccountId = 1000
+  )
+
+
 
   //################################### SIMULATION #############################################################
 
@@ -102,43 +165,83 @@ object MainchainPOC {
   def seconds(n: Long): TimeDelta = n * 1000000
 
   val network = new UniformNetwork(
-    random,
+    sharedSourceOfRandomness,
     minDelay = millis(20),
     maxDelay = millis(500),
     dropRate = 0.0
   )
 
-//  val agents = (1 to 5) map { i =>  (agentRef: AgentRef) => buildNewValidatorNode(i, agentRef)  }
+  val fakeSha256Digester = new FakeSha256Digester(sharedSourceOfRandomness)
+  val id2NodeId: Map[Int, NodeId] = (0 until numberOfValidators).map(i => (i,fakeSha256Digester.generateHash())).toMap
+  val nodeId2id: Map[NodeId, Int] = id2NodeId map { case (k,v) => (v,k) }
+  val nodeId2agentLabel: Map[NodeId, String] = nodeId2id.mapValues(id => label(id))
+  val globalStatesStorage = new GlobalStatesStorage(executionEngine)
 
 
-  def buildNewValidatorNode(nodeId: NodeId, agentRef: AgentRef): ValidatorNode = ???
-//    new ValidatorNode(
-//      blockchainConfig,
-//      nodeId ,
-//      agentRef,
-//      label = s"node-$nodeId",
-//      genesisBlock,
-//      discovery: Discovery[ValidatorId, AgentRef] with PluggableAgentBehaviour,
-//      gossip: Gossip[ValidatorId, AgentRef] with PluggableAgentBehaviour,
-//      validator: Validator
-//
-//    )
 
-  val preexistingAgents = List(
+  def buildNewValidatorNode(id: Int): ValidatorNode = {
+    val thisNodeId: NodeId = id2NodeId(id)
+    val discoveryPlugin = new TrivialDiscovery(thisNodeId, nodeId2agentLabel - thisNodeId)
+    val gossipPlugin = new NaiveGossip(discoveryPlugin)
 
-  )
+    val validatorPlugin: Validator = new Validator(
+      blockchainConfig,
+      validatorId = id,
+      genesisBlock,
+      genesisGlobalState,
+      gossipPlugin,
+      blockProposeDelay,
+      globalStatesStorage
+    )
 
-  val simulation = new SimulationImpl(preexistingAgents, Timepoint(seconds(30)), network)
+    new ValidatorNode(
+      blockchainConfig,
+      nodeId = fakeSha256Digester.generateHash(),
+      label = label(id),
+      genesisBlock,
+      discoveryPlugin,
+      gossipPlugin,
+      validatorPlugin
+    )
 
-//  val clientTrafficGen = new ClientsTrafficGenerator[P,MS,CS](
-//    random,
-//    mapOfInitialAccounts,
-//
-//  )
+  }
+
+  def label(id: Int): String = s"validator-$id"
+
 
   //##################################################################################################################################
 
-  def main(args: Array[String]): Unit = {
+  private def launchSimulation(): Unit = {
+    val simulation: Simulation[BlockchainSimulationOutputItem] = new SimulationImpl[BlockchainSimulationOutputItem](simulationEnd, network)
+    val agents: IndexedSeq[Agent[BlockchainSimulationOutputItem]] = (0 until numberOfValidators) map { i => buildNewValidatorNode(i) }
+    val agentRefs: IndexedSeq[AgentRef] = agents.map(agent => simulation.preRegisterAgent(agent))
+
+    val trafficGenerator = new ClientsTrafficGenerator(
+      sharedSourceOfRandomness,
+      trafficPerNode = Map.empty, //todo make this part of the config once the support on ClientsTrafficGenerator's side is fixed
+      initialAccounts = accountIds.map(account => account -> initialEtherPerGenesisValidator).toMap,
+      agentRefs,
+      deploysPerSecond = 1,
+      transactionsGenerator
+    )
+
+    val agentsCreationStream = Iterator.empty
+
+    val externalEventsStream: Iterator[ExternalEvent] = new Iterator[ExternalEvent] {
+      override def hasNext: Boolean = true
+
+      override def next(): ExternalEvent = {
+        val nextScheduledDeploy = trafficGenerator.next()
+        return ExternalEvent(
+          nextScheduledDeploy.id,
+          affectedAgent = nextScheduledDeploy.node,
+          scheduledDeliveryTime = nextScheduledDeploy.deliveryTimepoint,
+          payload = nextScheduledDeploy.transaction
+        )
+      }
+    }
+
+    simulation.start(externalEventsStream, agentsCreationStream)
 
   }
 

@@ -1,12 +1,21 @@
 package io.casperlabs.sim.simulation_framework
 
-import io.casperlabs.sim.abstract_blockchain.BlockchainSimulationOutputItem
 import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
 
 /**
   * Represents a participant of the simulated network.
   */
 trait Agent[+R] {
+
+  /**
+    * Called by the engine to set the agent-ref.
+    */
+  def initRef(ref: AgentRef)
+
+  /**
+    * Called by the engine to initialize engine features hook.
+    */
+  def initContext(context: AgentContext)
 
   /**
     * My reference (given by the engine).
@@ -16,7 +25,7 @@ trait Agent[+R] {
   /**
     * User-readable identifier of an agent - something like "client-324" or "server-15" or "bridge-1".
     * In any user-friendly presentation of the arena, names are going to be the primary way of "labelling" agents.
-    * This name must be unique on the arena and must never change !
+    * This name must be unique on the arena and must never change.
     * Agents naming schema is not decided here - we expect this to be heavily model-specific.
     */
   def label: String

@@ -6,11 +6,29 @@ import io.casperlabs.sim.simulation_framework.Agent.OutgoingMsgEnvelope
   * Abstract base class for agents that follow "akka" style.
   * We provide explicit stackable/pluggable in-agent components mechanics.
   */
-abstract class AbstractAgentWithPluggableBehaviours[R](val ref: AgentRef, val label: String, plugins: List[PluggableAgentBehaviour]) extends Agent[R] {
+abstract class AbstractAgentWithPluggableBehaviours[R](val label: String, plugins: List[PluggableAgentBehaviour]) extends Agent[R] {
+  private var privateRef: Option[AgentRef] = None
+  private var privateContext: Option[AgentContext] = None
   private var arrivalTimeOfCurrentEvent: Timepoint = Timepoint(0)
   private var currentMsgProcessingClock: TimeDelta = 0L
   private var currentSender: AgentRef = ref
   private var outgoingMessagesContainer: List[OutgoingMsgEnvelope] = List.empty
+
+  override def initRef(r: AgentRef): Unit = {
+    privateRef match {
+      case Some(_) => throw new RuntimeException("attempted to re-set agent id")
+      case None =>
+        privateRef = Some(r)
+    }
+  }
+
+  override def ref: AgentRef = privateRef.get
+
+  override def initContext(c: AgentContext): Unit = {
+    privateContext = Some(c)
+  }
+
+  protected def context: AgentContext = privateContext.get
 
   protected implicit val syntaxMagic: MessageSendingSupport = new MessageSendingSupport {
 
@@ -39,6 +57,8 @@ abstract class AbstractAgentWithPluggableBehaviours[R](val ref: AgentRef, val la
     }
 
     override def messageSendingSupport: MessageSendingSupport = syntaxMagic
+
+    override def findAgent(label: String): Option[AgentRef] = context.findAgent(label)
   }
 
   //initialize plugins

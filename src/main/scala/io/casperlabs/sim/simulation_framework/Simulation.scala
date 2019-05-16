@@ -7,10 +7,17 @@ package io.casperlabs.sim.simulation_framework
   */
 trait Simulation[R] {
 
+  /**
+    * Registration of pre-existing agents.
+    * Only works before the simulation is launched.
+    */
+  def preRegisterAgent(agent: Agent[R]): AgentRef
+
   def currentTime(): Timepoint
 
   def start(
              externalEventsGenerator: ExternalEventsStream,
              agentsCreationStream: AgentsCreationStream[R]
            ): Unit
+
 }

@@ -6,17 +6,23 @@ import io.casperlabs.sim.simulation_framework._
 
 import scala.collection.mutable
 
-class SimulationImpl[R](preexistingAgents: Iterable[AgentRef => Agent[R]], simulationEnd: Timepoint, networkBehavior: NetworkBehavior) extends Simulation[R] {
+class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavior) extends Simulation[R] {
 
   private val queue: SimEventsQueue[R] = new SimEventsQueue
   private val agentsRegistry = new mutable.HashMap[AgentRef, Agent[R]]
+  private val label2Agent = new mutable.HashMap[String, Agent[R]]
   private var clock: Timepoint = Timepoint(0L)
   private val agentIdGenerator = Iterator.iterate(0)(_ + 1)
   private val msgIdGenerator = Iterator.iterate(0L)(_ + 1L)
 
-  for (creator <- preexistingAgents) {
-    val agent = createAndRegisterAgent(creator)
+  private val sharedContext = new AgentContext {
+    override def findAgent(label: String): Option[AgentRef] = label2Agent.get(label).map(_.ref)
+  }
+
+  override def preRegisterAgent(agent: Agent[R]): AgentRef = {
+    val agentRef = privateRegisterAgent(agent)
     agent.onStartup(Timepoint.zero)
+    return agentRef
   }
 
   override def currentTime(): Timepoint = clock
@@ -47,8 +53,8 @@ class SimulationImpl[R](preexistingAgents: Iterable[AgentRef => Agent[R]], simul
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
 
             case ev: NewAgentCreation[R] =>
-              val agent = createAndRegisterAgent(ev.agentInstanceCreator)
-              agent.onStartup(ev.scheduledDeliveryTime)
+              privateRegisterAgent(ev.agentInstance)
+              ev.agentInstance.onStartup(ev.scheduledDeliveryTime)
 
             case ev: PrivateEvent =>
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
@@ -93,11 +99,14 @@ class SimulationImpl[R](preexistingAgents: Iterable[AgentRef => Agent[R]], simul
     }
   }
 
-  private def createAndRegisterAgent(agentCreator: AgentRef => Agent[R]): Agent[R] = {
+  private def privateRegisterAgent(agent: Agent[R]): AgentRef = {
+    require(! label2Agent.contains(agent.label))
     val agentRef: AgentRef = AgentRefImpl(this.nextAgentId())
-    val agentInstance: Agent[R] = agentCreator(agentRef)
-    agentsRegistry += (agentRef -> agentInstance)
-    return agentInstance
+    agent.initRef(agentRef)
+    agent.initContext(sharedContext)
+    agentsRegistry += (agentRef -> agent)
+    label2Agent += (agent.label -> agent)
+    return agentRef
   }
 
   private[this] def unsafeGetAgent(agentId: AgentRef, event: SimEventsQueueItem): Agent[R] =
