@@ -3,9 +3,11 @@ package io.casperlabs.sim.simulation_framework
 /**
   * Base class of messages that can be queued in the main events queue.
   */
-sealed trait SimEventsQueueItem {
+sealed trait SimEventsQueueItem extends Ordered[SimEventsQueueItem] {
   val id: Long
   val scheduledDeliveryTime: Timepoint
+
+  override def compare(that: SimEventsQueueItem): Int = scheduledDeliveryTime compare that.scheduledDeliveryTime
 }
 
 object SimEventsQueueItem {
@@ -34,10 +36,8 @@ object SimEventsQueueItem {
                                 affectedAgent: AgentRef,
                                 scheduledDeliveryTime: Timepoint,
                                 payload: Any) extends SimEventsQueueItem
+
 }
 
-class QueueItemsOrdering extends Ordering[SimEventsQueueItem] {
-  override def compare(x: SimEventsQueueItem, y: SimEventsQueueItem): Int = x.scheduledDeliveryTime compare y.scheduledDeliveryTime
-}
 
 

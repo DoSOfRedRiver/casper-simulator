@@ -22,7 +22,7 @@ import scala.collection.mutable
   * @tparam ExtEventPayload
   */
 class SimEventsQueue[R] {
-  private implicit val queueItemsOrdering: Ordering[SimEventsQueueItem] = new QueueItemsOrdering
+  private implicit val queueItemsOrdering = Ordering[SimEventsQueueItem].reverse
   private val queue = new mutable.PriorityQueue[SimEventsQueueItem]
   private var numberOfQueuedAgentMessages: Int = 0
   private var extEvents: Option[ExternalEventsStream] = None
