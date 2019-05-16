@@ -1,7 +1,5 @@
 package io.casperlabs.sim.tmp
 
-import akka.util.ByteString
-
 
 final case class BlockMetadata(
                                 blockHash: BlockHash,

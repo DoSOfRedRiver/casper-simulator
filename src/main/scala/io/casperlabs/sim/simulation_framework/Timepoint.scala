@@ -11,6 +11,13 @@ case class Timepoint(micros: Long) extends AnyVal with Ordered[Timepoint] {
   def +(delta: TimeDelta): Timepoint = Timepoint(micros + delta)
 
   def -(other: Timepoint): TimeDelta = this.micros - other.micros
+
+  override def toString: String = {
+    var s = micros.toString
+    if (s.length < 7)
+      s = s.reverse.padTo(7, '0').reverse
+    return s.dropRight(6) + "." + s.takeRight(6)
+  }
 }
 
 object Timepoint {

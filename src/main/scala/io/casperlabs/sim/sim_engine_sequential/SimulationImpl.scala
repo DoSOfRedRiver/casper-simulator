@@ -3,10 +3,12 @@ package io.casperlabs.sim.sim_engine_sequential
 import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
 import io.casperlabs.sim.simulation_framework.SimEventsQueueItem._
 import io.casperlabs.sim.simulation_framework._
+import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 
 class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavior) extends Simulation[R] {
+  private val log = LoggerFactory.getLogger("sim-engine")
 
   private val queue: SimEventsQueue[R] = new SimEventsQueue
   private val agentsRegistry = new mutable.HashMap[AgentRef, Agent[R]]
@@ -31,6 +33,8 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
                       externalEventsGenerator: ExternalEventsStream,
                       agentsCreationStream: AgentsCreationStream[R]
                     ): Unit = {
+    log.debug("starting simulation")
+
     queue.plugInAgentsCreationStream(agentsCreationStream)
     queue.plugInExternalEventsStream(externalEventsGenerator)
 
@@ -43,11 +47,13 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
           clock = event.scheduledDeliveryTime
           event match {
             case msg: AgentToAgentMsg =>
+              log.debug(s"$clock: delivering msg ${msg.payload.getClass.getSimpleName} from ${msg.source} to ${msg.destination}")
               val agent = unsafeGetAgent(msg.destination, msg)
               val processingResult: MsgHandlingResult[R] = agent.handleMessage(msg)
               applyEventProcessingResultToSimState(msg.destination, processingResult)
 
             case ev: ExternalEvent =>
+              log.debug(s"$clock: delivering ext event ${ev.payload.getClass.getSimpleName} to ${ev.affectedAgent}")
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
               val processingResult: MsgHandlingResult[R] = agent.handleExternalEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
@@ -57,15 +63,19 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
               ev.agentInstance.onStartup(ev.scheduledDeliveryTime)
 
             case ev: PrivateEvent =>
+              log.debug(s"$clock: triggering timer ${ev.payload.getClass.getSimpleName} for ${ev.affectedAgent}")
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
               val processingResult: MsgHandlingResult[R] = agent.handlePrivateEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
           }
       }
     }
+
+    log.debug("simulation ended successfully")
   }
 
   def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult[R]): Unit = {
+    log.debug(s"$clock: appending to queue: ${processingResult.outgoingMessages}")
     for (item <- processingResult.outgoingMessages) {
       val sendingTimepoint = clock + item.relativeTimeOfSendingThisMessage
 

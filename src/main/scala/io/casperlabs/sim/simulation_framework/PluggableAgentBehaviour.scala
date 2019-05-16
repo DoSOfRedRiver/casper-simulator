@@ -5,11 +5,11 @@ package io.casperlabs.sim.simulation_framework
   * See class AbstractAgentWithPluggableBehaviours.
   */
 trait PluggableAgentBehaviour {
-  private var context: PluginContext = _
-  protected implicit lazy val syntaxMagic: MessageSendingSupport = context.messageSendingSupport
+  private var ctx: PluginContext = _
+  protected implicit lazy val syntaxMagic: MessageSendingSupport = ctx.messageSendingSupport
 
   def initContext(c: PluginContext): Unit = {
-    context = c
+    ctx = c
   }
 
   /**
@@ -54,9 +54,9 @@ trait PluggableAgentBehaviour {
   /**
     * Access to features of the owning agent (= where this plugin is plugged to).
     */
-  protected def thisAgent: PluginContext = context
+  protected def thisAgent: PluginContext = ctx
 
-  protected def findAgent(label: String): Option[AgentRef] = context.findAgent(label)
+  protected def context: PluginContext = ctx
 
   def startup(): Unit
 

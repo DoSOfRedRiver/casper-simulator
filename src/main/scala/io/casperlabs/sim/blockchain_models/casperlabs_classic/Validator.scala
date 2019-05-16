@@ -8,6 +8,7 @@ import io.casperlabs.sim.blockchain_components.graphs.{DoublyLinkedDag, IndexedT
 import io.casperlabs.sim.blockchain_components.hashing.Hash
 import io.casperlabs.sim.blockchain_models.casperlabs_classic.Validator.{AddBlockResult, ProposeTik}
 import io.casperlabs.sim.simulation_framework._
+import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 
@@ -30,6 +31,8 @@ class Validator(
                  proposeDelay: TimeDelta,
                  globalStatesStorage: GlobalStatesStorage[BinaryArraySpace.MemoryState, Transaction]
                ) extends PluggableAgentBehaviour {
+
+  private val log = LoggerFactory.getLogger(s"validator-$validatorId")
 
   type MS = BinaryArraySpace.MemoryState
   type P = BinaryArraySpace.Program
@@ -68,12 +71,15 @@ class Validator(
 //###################################### PLUGIN CALLBACKS ########################################
 
   override def startup(): Unit = {
+    log.debug(s"${context.timeOfCurrentEvent}: startup of ${context.selfLabel}")
     globalStatesStorage.store(genesisGlobalState)
+    thisAgent.setTimerEvent(proposeDelay, ProposeTik)
   }
 
   override def onExternalEvent(msg: Any): Boolean =
     consumeIfMatched(msg) {
       case tx: Transaction =>
+        log.debug(s"${context.timeOfCurrentEvent}: received deploy $msg")
         deployBuffer += tx
     }
 
@@ -84,6 +90,8 @@ class Validator(
           if (shouldProposeNewBlockNow) {
             lastProposeTime = thisAgent.timeOfCurrentEvent
             this.createAndPublishNewBlock()
+          } else {
+            log.debug(s"${context.timeOfCurrentEvent}: giving up with block creation at current wake-up")
           }
         thisAgent.setTimerEvent(delayToNextWakeUp, ProposeTik)
     }
@@ -95,23 +103,25 @@ class Validator(
 
 //#################################################################################################
 
-  private def handleIncomingBlock(block: NormalBlock): Unit =
+  private def handleIncomingBlock(block: NormalBlock): Unit = {
+    log.debug(s"${context.timeOfCurrentEvent}: received block ${block.id} with daglevel=${block.dagLevel} created by ${block.creator}")
+
     attemptAddingIncomingBlockToLocalBlockdag(block) match {
       case AddBlockResult.AlreadyAdded =>
-        // We got this block already, nothing to do
+      // We got this block already, nothing to do
 
       case AddBlockResult.MissingJustifications(justifications) =>
         for (j <- justifications)
-        blockBuffer.addPair(block, j.asInstanceOf[NormalBlock]) //this casting is legal because Genesis block is always present (hence cannot be missing and registered as missing dependency)
-        //todo: add block buffer purging here (if a block stays in the buffer for too long, it should be discarded because we assume it must be a side-effect of hacking attempt)
+          blockBuffer.addPair(block, j.asInstanceOf[NormalBlock]) //this casting is legal because Genesis block is always present (hence cannot be missing and registered as missing dependency)
+      //todo: add block buffer purging here (if a block stays in the buffer for too long, it should be discarded because we assume it must be a side-effect of hacking attempt)
 
       case AddBlockResult.Invalid =>
-        // Something is wrong with the block.
-        // No new messages need to be sent.
-        // TODO: slashing
+      // Something is wrong with the block.
+      // No new messages need to be sent.
+      // TODO: slashing
 
       case AddBlockResult.InvalidPostStateHash =>
-        //todo: slashing
+      //todo: slashing
 
       case AddBlockResult.Valid =>
         // Block is valid, gossip to others
@@ -123,10 +133,12 @@ class Validator(
         blockBuffer.removeTarget(block)
         if (blocksWaitingForThisOne.nonEmpty) {
           for (a <- blocksWaitingForThisOne)
-            if (! blockBuffer.hasSource(a))
+            if (!blockBuffer.hasSource(a))
               this.attemptAddingIncomingBlockToLocalBlockdag(a) //we are not checking the result because this time is must be a success //todo: add assertion here ?
         }
     }
+
+  }
 
   private def attemptAddingIncomingBlockToLocalBlockdag(b: NormalBlock): AddBlockResult =
     (pDag.insert(b, b.parents), jDag.insert(b, b.justifications)) match {
@@ -230,6 +242,8 @@ class Validator(
     globalStatesStorage.store(postState)
 
     gossipService.gossip(block)
+
+    log.debug(s"${context.timeOfCurrentEvent}: publishing new block ${block.id} with daglevel=${block.dagLevel} and ${block.transactions.size} transactions")
   }
 
 }

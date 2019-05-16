@@ -11,7 +11,7 @@ abstract class AbstractAgentWithPluggableBehaviours[R](val label: String, plugin
   private var privateContext: Option[AgentContext] = None
   private var arrivalTimeOfCurrentEvent: Timepoint = Timepoint(0)
   private var currentMsgProcessingClock: TimeDelta = 0L
-  private var currentSender: AgentRef = ref
+  private var currentSender: AgentRef = _
   private var outgoingMessagesContainer: List[OutgoingMsgEnvelope] = List.empty
 
   override def initRef(r: AgentRef): Unit = {
@@ -49,11 +49,11 @@ abstract class AbstractAgentWithPluggableBehaviours[R](val label: String, plugin
     override def advanceCurrentMessageProcessingStopwatch(d: TimeDelta): Unit = AbstractAgentWithPluggableBehaviours.this.advanceCurrentMessageProcessingStopwatch(d)
 
     override def sendMsg(destination: AgentRef, msg: Any): Unit = {
-      OutgoingMsgEnvelope.Tell(destination, currentMsgProcessingClock, msg) :: outgoingMessagesContainer
+      outgoingMessagesContainer = OutgoingMsgEnvelope.Tell(destination, currentMsgProcessingClock, msg) :: outgoingMessagesContainer
     }
 
     override def setTimerEvent(delay: TimeDelta, msg: Any): Unit = {
-      OutgoingMsgEnvelope.Private(currentMsgProcessingClock, delay, msg) :: outgoingMessagesContainer
+      outgoingMessagesContainer = OutgoingMsgEnvelope.Private(currentMsgProcessingClock, delay, msg) :: outgoingMessagesContainer
     }
 
     override def messageSendingSupport: MessageSendingSupport = syntaxMagic

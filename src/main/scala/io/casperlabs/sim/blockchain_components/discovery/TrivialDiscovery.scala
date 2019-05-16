@@ -8,9 +8,9 @@ import io.casperlabs.sim.simulation_framework.{AgentRef, PluggableAgentBehaviour
   */
 class TrivialDiscovery(val selfNodeId: NodeId, addressMap: Map[NodeId, String]) extends Discovery[NodeId, AgentRef] with PluggableAgentBehaviour {
 
-  def lookup(id: NodeId): Option[AgentRef] = addressMap.get(id).flatMap(label => findAgent(label))
+  def lookup(id: NodeId): Option[AgentRef] = addressMap.get(id).flatMap(label => context.findAgent(label))
 
-  lazy val peers: List[AgentRef] = addressMap.values.map(label => findAgent(label).get).toList
+  lazy val peers: List[AgentRef] = addressMap.values.map(label => context.findAgent(label).get).toList
 
   def startup(): Unit = {
     //do nothing

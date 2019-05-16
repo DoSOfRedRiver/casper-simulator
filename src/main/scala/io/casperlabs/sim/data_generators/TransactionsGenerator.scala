@@ -19,7 +19,8 @@ class TransactionsGenerator[P, MS, CS <: ComputingSpace[P, MS]](
                                                                  random: Random,
                                                                  gasPriceInterval: (Ether, Ether),
                                                                  computingSpaceProgramsGenerator: ProgramsGenerator[P, MS, CS],
-                                                                 initialAccountId: Int
+                                                                 startingIdForNewAccounts: Int,
+                                                                 preExistingAccounts: Map[Account, Ether]
                                                                ) {
 
   val transactionTypeSelector = new RandomSelector[String](
@@ -32,8 +33,10 @@ class TransactionsGenerator[P, MS, CS <: ComputingSpace[P, MS]](
   )
 
   val accountBalances: mutable.Map[Account, Ether] = new mutable.HashMap[Account, Ether]()
+  accountBalances ++= preExistingAccounts
   val accountNonces: mutable.Map[Account, Long] = new mutable.HashMap[Account, Long]()
-  var lastAccountId: Int = initialAccountId
+  accountNonces ++= preExistingAccounts.mapValues(x => 0)
+  var lastAccountId: Int = startingIdForNewAccounts
   val gasPriceGenerator = new PseudoGaussianSelectionFromLongInterval(random, gasPriceInterval)
 
   def createTransaction(): Transaction = {
