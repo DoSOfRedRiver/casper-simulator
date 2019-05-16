@@ -30,6 +30,7 @@ class SimEventsQueue[R] {
   private var latestAgentMsgTimepoint: Timepoint = Timepoint(0)
   private var latestExtEventTimepoint: Timepoint = Timepoint(0)
   private var latestAgentCreationTimepoint: Timepoint = Timepoint(0)
+  private var currentTime: Timepoint = Timepoint(0)
 
   def plugInExternalEventsStream(externalEventsGenerator: ExternalEventsStream): Unit ={
     extEvents = Some(externalEventsGenerator)
@@ -42,6 +43,8 @@ class SimEventsQueue[R] {
   }
 
   def enqueue(msg: SimEventsQueueItem): Unit = {
+    if (msg.scheduledDeliveryTime < currentTime)
+      throw new RuntimeException(s"time order violation at sim events queue: current time was $currentTime, trying to add $msg")
     queue.enqueue(msg)
     numberOfQueuedAgentMessages += 1
     if (msg.scheduledDeliveryTime > latestAgentMsgTimepoint) {
@@ -70,19 +73,20 @@ class SimEventsQueue[R] {
         case other => //do nothing
       }
 
+      currentTime = nextEvent.scheduledDeliveryTime
       return Some(nextEvent)
     }
   }
 
   private def ensureExtEventsAreGeneratedUpTo(timepoint: Timepoint): Unit =
     extEvents.foreach { externalEventsGenerator =>
-      while (latestExtEventTimepoint < timepoint)
+      while (latestExtEventTimepoint < timepoint && externalEventsGenerator.hasNext)
         generateNextExtEvent(externalEventsGenerator)
     }
 
   private def ensureAgentCreationsAreGeneratedUpTo(timepoint: Timepoint): Unit =
     createEvents.foreach { agentsCreationStream =>
-      while (latestAgentCreationTimepoint < timepoint)
+      while (latestAgentCreationTimepoint < timepoint && agentsCreationStream.hasNext)
         generateNextAgentCreationEvent(agentsCreationStream)
     }
 

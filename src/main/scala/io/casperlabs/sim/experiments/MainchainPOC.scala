@@ -90,7 +90,7 @@ object MainchainPOC {
   val initialMemoryState: MS = computingSpace.initialState
   val executionEngine = new DefaultExecutionEngine(blockchainConfig, computingSpace)
   val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](executionEngine, blockchainConfig)
-  val sharedSourceOfRandomness = new Random
+  val sharedSourceOfRandomness = new Random(42)
 
 
   def label(id: Int): String = s"validator-$id"
@@ -112,10 +112,10 @@ object MainchainPOC {
       for {
         i <- 0 until numberOfValidatorsBondedAtGenesis
         state =
-        if (i <= numberOfValidatorsBondedAtGenesis)
-          ValidatorState.initial(validators(i), accountIds(i), initialStakePerGenesisValidator)
-        else
-          ValidatorState.initial(validators(i), accountIds(i), stake = 0)
+          if (i <= numberOfValidatorsBondedAtGenesis)
+            ValidatorState.initial(validators(i), accountIds(i), initialStakePerGenesisValidator)
+          else
+            ValidatorState.initial(validators(i), accountIds(i), stake = 0)
       }
         yield validators(i) -> state
 
@@ -181,7 +181,7 @@ object MainchainPOC {
 
       val validatorPlugin: Validator = new Validator(
         blockchainConfig,
-        validatorId = id,
+        validatorId = validators(id),
         genesisBlock,
         genesisGlobalState,
         gossipPlugin,

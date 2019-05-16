@@ -185,14 +185,15 @@ class Validator(
   private def decideIfWeWantToProposeBlockNowAndCalculateDelayToNextWakeup(): (Boolean, TimeDelta) = {
     //todo: replace this method with proper abstraction of blocks proposing strategy (should this be another PluggableAgentBehaviour ?)
     val diff = thisAgent.timeOfCurrentEvent - lastProposeTime
-    (diff >= proposeDelay, proposeDelay)
+    (diff >= proposeDelay && deployBuffer.nonEmpty, proposeDelay)
   }
 
   private[this] def createAndPublishNewBlock(): Unit = {
     // TODO: check for equivocations?
+    //todo: implement merging or parents; for now we implement block-tree only
     val latestMessages: Map[ValidatorId, Block] = (jDag.tips.groupBy(_.creator) - Block.psuedoValidatorIdUsedForGenesisBlock).mapValues(_.head)
 
-    val selectedParentBlock: Block = BlockdagUtils.lmdMainchainGhost[ValidatorId, Block, Hash](
+    val selectedParentBlock = BlockdagUtils.lmdMainchainGhost[ValidatorId, Block, Hash](
       latestMessages,
       validatorWeightExtractor = (block, vid) => block.weightsMap.getOrElse(vid, 0L),
       pDag,
@@ -200,27 +201,23 @@ class Validator(
       tieBreaker = block => block.id
     )
 
-    val parents: IndexedSeq[Block] = IndexedSeq(selectedParentBlock)
-
-    //todo: implement merging or parents; for now we implement block-tree only
-
-    val pTimeOfThisBlock: Gas = selectedParentBlock.pTime + selectedParentBlock.gasBurned
-    val txns = deployBuffer.toIndexedSeq
-    deployBuffer.clear()
     val preStateHash: Hash = selectedParentBlock.postStateHash
     val preState: GlobalState[MS] = globalStatesStorage.read(preStateHash).get
+    if (preState.validatorsBook.currentStakeOf(validatorId) == 0)
+      return //I am not an active validator in this line of the world, so I cannot propose blocks !
+    val parents: IndexedSeq[Block] = IndexedSeq(selectedParentBlock)
+    val transactions = deployBuffer.toIndexedSeq
     val justifications: IndexedSeq[Block] = latestMessages.values.toIndexedSeq
     val justificationsIds: IndexedSeq[Hash] = justifications.map(b => b.id)
-
     val newBlockId: Hash = blocksExecutor.calculateBlockId(
       validatorId,
       parents = IndexedSeq(selectedParentBlock.id),
       justificationsIds,
-      txns,
+      transactions,
       preStateHash
     )
-
-    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(preState, pTimeOfThisBlock, newBlockId, validatorId, txns)
+    val pTimeOfTheNewBlock: Gas = selectedParentBlock.pTime + selectedParentBlock.gasBurned
+    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(preState, pTimeOfTheNewBlock, newBlockId, validatorId, transactions)
     val postStateHash = executionEngine.globalStateHash(postState)
 
     val block = NormalBlock(
@@ -229,8 +226,8 @@ class Validator(
       dagLevel = parents.map(_.dagLevel).max + 1,
       parents,
       justifications,
-      txns,
-      pTimeOfThisBlock,
+      transactions,
+      pTimeOfTheNewBlock,
       gasBurned,
       postState.validatorsBook.validatorWeightsMap,
       preStateHash,
@@ -242,6 +239,7 @@ class Validator(
     globalStatesStorage.store(postState)
 
     gossipService.gossip(block)
+    deployBuffer.clear()
 
     log.debug(s"${context.timeOfCurrentEvent}: publishing new block ${block.id} with daglevel=${block.dagLevel} and ${block.transactions.size} transactions")
   }

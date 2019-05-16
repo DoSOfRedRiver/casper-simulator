@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory
 import scala.collection.mutable
 
 class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavior) extends Simulation[R] {
-  private val log = LoggerFactory.getLogger("sim-engine")
+  private val log = LoggerFactory.getLogger("** sim-engine")
 
   private val queue: SimEventsQueue[R] = new SimEventsQueue
   private val agentsRegistry = new mutable.HashMap[AgentRef, Agent[R]]
@@ -23,7 +23,8 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
 
   override def preRegisterAgent(agent: Agent[R]): AgentRef = {
     val agentRef = privateRegisterAgent(agent)
-    agent.onStartup(Timepoint.zero)
+    val processingResult: MsgHandlingResult[R] = agent.onStartup(Timepoint.zero)
+    applyEventProcessingResultToSimState(agentRef, processingResult)
     return agentRef
   }
 
@@ -47,23 +48,25 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
           clock = event.scheduledDeliveryTime
           event match {
             case msg: AgentToAgentMsg =>
-              log.debug(s"$clock: delivering msg ${msg.payload.getClass.getSimpleName} from ${msg.source} to ${msg.destination}")
+              log.debug(s"$clock: [${msg.id}] agent-msg ${msg.payload.getClass.getSimpleName} from ${msg.source} to ${msg.destination}")
               val agent = unsafeGetAgent(msg.destination, msg)
               val processingResult: MsgHandlingResult[R] = agent.handleMessage(msg)
               applyEventProcessingResultToSimState(msg.destination, processingResult)
 
             case ev: ExternalEvent =>
-              log.debug(s"$clock: delivering ext event ${ev.payload.getClass.getSimpleName} to ${ev.affectedAgent}")
+              log.debug(s"$clock: [${ev.id}] ext-event ${ev.payload.getClass.getSimpleName} to ${ev.affectedAgent}")
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
               val processingResult: MsgHandlingResult[R] = agent.handleExternalEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
 
             case ev: NewAgentCreation[R] =>
-              privateRegisterAgent(ev.agentInstance)
-              ev.agentInstance.onStartup(ev.scheduledDeliveryTime)
+              log.debug(s"$clock: [${ev.id}] agent-cre ${ev.agentInstance.label}")
+              val agentRef = privateRegisterAgent(ev.agentInstance)
+              val processingResult: MsgHandlingResult[R] = ev.agentInstance.onStartup(ev.scheduledDeliveryTime)
+              applyEventProcessingResultToSimState(agentRef, processingResult)
 
             case ev: PrivateEvent =>
-              log.debug(s"$clock: triggering timer ${ev.payload.getClass.getSimpleName} for ${ev.affectedAgent}")
+              log.debug(s"$clock: [${ev.id}] >>timer<< ${ev.payload.getClass.getSimpleName} for ${ev.affectedAgent}")
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
               val processingResult: MsgHandlingResult[R] = agent.handlePrivateEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
@@ -75,7 +78,8 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
   }
 
   def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult[R]): Unit = {
-    log.debug(s"$clock: appending to queue: ${processingResult.outgoingMessages}")
+    if (processingResult.outgoingMessages.nonEmpty)
+      log.debug(s"$clock: appending to queue: ${processingResult.outgoingMessages}")
     for (item <- processingResult.outgoingMessages) {
       val sendingTimepoint = clock + item.relativeTimeOfSendingThisMessage
 

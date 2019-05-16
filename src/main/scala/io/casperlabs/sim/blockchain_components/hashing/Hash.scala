@@ -4,6 +4,7 @@ package io.casperlabs.sim.blockchain_components.hashing
   * Wrapper for a cryptographic hash value.
   */
 case class Hash(bytes: Array[Byte]) extends Ordered[Hash] {
+  override lazy val hashCode: Int = calculateHashCode
 
   override def toString: String = convertBytesToHex(bytes)
 
@@ -22,6 +23,28 @@ case class Hash(bytes: Array[Byte]) extends Ordered[Hash] {
         return diff
     }
     return 0
+  }
+
+  private def calculateHashCode: Int = {
+    var acc: Int = 0
+    for (i <- 0 until bytes.length / 2) {
+      val offset = i * 2
+      val intValue = (bytes(offset)<<8 & 0xFF00) | (bytes(offset+1) & 0xFF)
+      acc = acc ^ intValue
+    }
+    return acc
+  }
+
+  override def canEqual(that: Any): Boolean = that.isInstanceOf[Hash]
+
+  override def equals(obj: Any): Boolean = {
+    if (obj == null)
+      false
+    else
+      this.canEqual(obj) && {
+        val that = obj.asInstanceOf[Hash]
+        hashCode == that.hashCode && bytes.sameElements(obj.asInstanceOf[Hash].bytes)
+      }
   }
 
 }

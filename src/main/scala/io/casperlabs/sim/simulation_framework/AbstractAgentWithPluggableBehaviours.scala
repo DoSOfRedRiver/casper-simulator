@@ -32,7 +32,7 @@ abstract class AbstractAgentWithPluggableBehaviours[R](val label: String, plugin
 
   protected implicit val syntaxMagic: MessageSendingSupport = new MessageSendingSupport {
 
-    override def tell(destination: AgentRef, msg: Any): Unit = pluginContext.sendMsg(destination, msg)
+    override def tell(destination: AgentRef, msg: Any): Unit = internalSendMsg(destination, msg)
 
     override def ask(destination: AgentRef, msg: Any): MessageSendingSupport.FutureResponse[Any] = ??? //todo: implement support for request-response calls
   }
@@ -48,13 +48,9 @@ abstract class AbstractAgentWithPluggableBehaviours[R](val label: String, plugin
 
     override def advanceCurrentMessageProcessingStopwatch(d: TimeDelta): Unit = AbstractAgentWithPluggableBehaviours.this.advanceCurrentMessageProcessingStopwatch(d)
 
-    override def sendMsg(destination: AgentRef, msg: Any): Unit = {
-      outgoingMessagesContainer = OutgoingMsgEnvelope.Tell(destination, currentMsgProcessingClock, msg) :: outgoingMessagesContainer
-    }
+    override def sendMsg(destination: AgentRef, msg: Any): Unit = internalSendMsg(destination, msg)
 
-    override def setTimerEvent(delay: TimeDelta, msg: Any): Unit = {
-      outgoingMessagesContainer = OutgoingMsgEnvelope.Private(currentMsgProcessingClock, delay, msg) :: outgoingMessagesContainer
-    }
+    override def setTimerEvent(delay: TimeDelta, msg: Any): Unit = internalSetTimerEvent(delay, msg)
 
     override def messageSendingSupport: MessageSendingSupport = syntaxMagic
 
@@ -106,6 +102,14 @@ abstract class AbstractAgentWithPluggableBehaviours[R](val label: String, plugin
       if (consumed)
         return
     }
+  }
+
+  private def internalSendMsg(destination: AgentRef, msg: Any): Unit = {
+    outgoingMessagesContainer = OutgoingMsgEnvelope.Tell(destination, currentMsgProcessingClock, msg) :: outgoingMessagesContainer
+  }
+
+  private def internalSetTimerEvent(delay: TimeDelta, msg: Any): Unit = {
+    outgoingMessagesContainer = OutgoingMsgEnvelope.Private(currentMsgProcessingClock, delay, msg) :: outgoingMessagesContainer
   }
 
   /**
