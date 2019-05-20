@@ -6,6 +6,7 @@ import io.casperlabs.sim.blockchain_components.execution_engine.{DefaultExecutio
 import io.casperlabs.sim.blockchain_components.gossip.Gossip
 import io.casperlabs.sim.blockchain_components.graphs.{DoublyLinkedDag, IndexedTwoArgRelation}
 import io.casperlabs.sim.blockchain_components.hashing.Hash
+import io.casperlabs.sim.blockchain_components.pretty_printing.{BlockdagPrettyPrinter, BlocksBufferPrettyPrinter}
 import io.casperlabs.sim.blockchain_models.casperlabs_classic.Validator.{AddBlockResult, ProposeTik}
 import io.casperlabs.sim.simulation_framework._
 import org.slf4j.LoggerFactory
@@ -62,9 +63,6 @@ class Validator(
   //we use BinaryArraySpace as our computing space //todo: make this configurable ?
   private val computingSpace: CS = BinaryArraySpace.ComputingSpace
 
-  //initial memory state (belongs to computing space)
-  private val initialMemoryState: MS = computingSpace.initialState
-
   //execution engine in use //todo: make this configurable ?
   private val executionEngine = new DefaultExecutionEngine(blockchainConfig, computingSpace)
 
@@ -107,26 +105,30 @@ class Validator(
 //#################################################################################################
 
   private def handleIncomingBlock(block: NormalBlock): Unit = {
-    log.debug(s"${context.timeOfCurrentEvent}: received block ${block.id} with daglevel=${block.dagLevel} created by ${block.creator}")
+    log.trace(s"${context.timeOfCurrentEvent}: received block ${block.id} with daglevel=${block.dagLevel} created by ${block.creator}, current blocks buffer is: ${BlocksBufferPrettyPrinter.print(blockBuffer)}")
 
     validateIncomingBlockAndAttemptAddingItToLocalBlockdag(block) match {
       case AddBlockResult.AlreadyAdded =>
-      // We got this block already, nothing to do
+        // We got this block already, nothing to do
+        log.trace("incoming block case: already added")
 
       case AddBlockResult.MissingJustifications(justifications) =>
         for (j <- justifications)
           blockBuffer.addPair(block, j.asInstanceOf[NormalBlock]) //this casting is legal because Genesis block is always present (hence cannot be missing and registered as missing dependency)
-      //todo: add block buffer purging here (if a block stays in the buffer for too long, it should be discarded because we assume it must be a side-effect of hacking attempt)
+        //todo: add block buffer purging here (if a block stays in the buffer for too long, it should be discarded because we assume it must be a side-effect of hacking attempt)
+        log.trace("incoming block case: missing justification")
 
       case AddBlockResult.Invalid =>
-      // Something is wrong with the block.
-      // No new messages need to be sent.
-      // TODO: slashing
+        // Something is wrong with the block.
+        // No new messages need to be sent.
+        // TODO: slashing
+        log.trace("incoming block case: invalid")
 
       case AddBlockResult.Valid =>
         // Block is valid, gossip to others
         //todo: this does not work correctly with current mock of gossiping (clarify/fix this !)
         //gossipService.gossip(Node.Comm.NewBlock(b))
+        log.trace("incoming block case: valid")
 
         //possibly this new block unlocked some other blocks in the blocks buffer
         val blocksWaitingForThisOne = blockBuffer.findSourcesFor(block)
@@ -136,6 +138,9 @@ class Validator(
             if (!blockBuffer.hasSource(a))
               this.validateIncomingBlockAndAttemptAddingItToLocalBlockdag(a) //we are not checking the result because this time is must be a success //todo: add assertion here ?
         }
+
+        log.trace(s"final pDag: \n ${BlockdagPrettyPrinter.print(pDag)}")
+        log.trace(s"final blocks buffer: \n: ${BlocksBufferPrettyPrinter.print(blockBuffer)}")
     }
 
   }
@@ -174,7 +179,7 @@ class Validator(
 
     globalStatesStorage.read(block.preStateHash) match {
       case Some(preState) =>
-        val (gs, gas, fatalErrors) = blocksExecutor.executeBlock(preState, block)
+        val (gs, gas, txResults) = blocksExecutor.executeBlock(preState, block)
         val postStateHash = executionEngine.globalStateHash(gs)
         if (postStateHash == block.postStateHash && gas == block.gasBurned) {
           globalStatesStorage.store(gs)
@@ -199,6 +204,8 @@ class Validator(
     // TODO: check for equivocations?
     //todo: implement merging or parents; for now we implement block-tree only
 
+    log.trace(s"${context.timeOfCurrentEvent}: about to create new block, current pDAG is: \n ${BlockdagPrettyPrinter.print(pDag)}")
+
     //run fork-choice; in this variant of consensus we select only one parent (hence the blockdag is a tree)
     val latestMessages: Map[ValidatorId, Block] = (jDag.tips.groupBy(_.creator) - Block.psuedoValidatorIdUsedForGenesisBlock).mapValues(_.head)
     val selectedParentBlock = BlockdagUtils.lmdMainchainGhost[ValidatorId, Block, Hash](
@@ -208,6 +215,8 @@ class Validator(
       genesisBlock,
       tieBreaker = block => block.id
     )
+
+    log.debug(s"${context.timeOfCurrentEvent}: fork choice result = ${selectedParentBlock.shortId}")
 
     //take the post-state hash of the selected to-become-parent block
     val preStateHash: Hash = selectedParentBlock.postStateHash
@@ -243,7 +252,7 @@ class Validator(
       validatorId,
       parents,
       justifications,
-      deployBuffer.toIndexedSeq)
+      transactions)
 
     //transactions with fatal errors are not included in the new block; before throwing them away we do some logging
     if (log.isDebugEnabled) {

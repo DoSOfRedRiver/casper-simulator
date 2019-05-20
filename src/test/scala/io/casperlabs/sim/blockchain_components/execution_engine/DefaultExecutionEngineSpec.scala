@@ -4,7 +4,7 @@ import io.casperlabs.sim.BaseSpec
 import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.MockingSpace
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
-import io.casperlabs.sim.blockchain_components.hashing.{FakeHashGenerator, FakeSha256Digester}
+import io.casperlabs.sim.blockchain_components.hashing.FakeSha256Digester
 
 import scala.util.Random
 
@@ -45,7 +45,6 @@ class DefaultExecutionEngineSpec extends BaseSpec {
   val initialMemoryState: MockingSpace.MemoryState = MockingSpace.MemoryState.Singleton
   val ee = new DefaultExecutionEngine(config, computingSpace)
   val random = new Random(42) //fixed seed, so tests are deterministic
-  val hashGen = new FakeHashGenerator(random)
 
   //#################################### GLOBAL STATE INIT #################################
 

@@ -8,6 +8,7 @@ import io.casperlabs.sim.blockchain_components.hashing.Hash
   */
 sealed abstract class Transaction {
   def id: Hash
+  lazy val shortId: String = id.toString.take(8)
   def sponsor: Account
   def gasPrice: Ether
   def gasLimit: Gas

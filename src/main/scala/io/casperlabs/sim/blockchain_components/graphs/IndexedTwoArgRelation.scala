@@ -63,4 +63,10 @@ class IndexedTwoArgRelation[A,B] {
   def hasSource(a: A): Boolean = ab.contains(a)
 
   def hasTarget(b: B): Boolean = ba.contains(b)
+
+  def sources: Iterable[A] = ab.keys
+
+  def targets: Iterable[B] = ba.keys
+
+  def size: Int = ab.map(entry => entry._2.size).sum
 }

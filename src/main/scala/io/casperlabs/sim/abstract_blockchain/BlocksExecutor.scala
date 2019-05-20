@@ -2,7 +2,6 @@ package io.casperlabs.sim.abstract_blockchain
 
 import io.casperlabs.sim.abstract_blockchain.BlocksExecutor.BlockCreationResult
 import io.casperlabs.sim.blockchain_components.execution_engine._
-import io.casperlabs.sim.blockchain_components.hashing.Hash
 import io.casperlabs.sim.blockchain_models.casperlabs_classic.{Block, NormalBlock}
 
 /**
@@ -22,22 +21,6 @@ trait BlocksExecutor[MS, B <: AbstractNormalBlock] {
     * @return (post-state, gas burned in block)
     */
   def executeBlock(preState: GlobalState[MS], block: B): (GlobalState[MS], Gas, Map[Transaction, TransactionExecutionResult])
-
-  /**
-    * Executes transactions in a block (+ any block-level logic).
-    * This method is dedicated for the block proposing sequence (where the block is not created yet).
-    *
-    * @param preState
-    * @param pTime
-    * @param blockId
-    * @param creator
-    * @param parents
-    * @param justifications
-    * @param transactions
-    * @return
-    */
-  @deprecated
-  def executeBlockAsCreator(preState: GlobalState[MS], pTime: Gas, blockId: BlockId, creator: ValidatorId, transactions: IndexedSeq[Transaction]): (GlobalState[MS], Gas) = ???
 
   def createBlock(
                    preState: GlobalState[MS],

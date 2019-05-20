@@ -10,6 +10,7 @@ import io.casperlabs.sim.blockchain_models.casperlabs_classic.Block
   */
 trait AbstractBlock {
   def id: Hash
+  lazy val shortId: String = id.toString.take(8)
   def pseudoId: PseudoId
   def parents: IndexedSeq[Block]
   def justifications: IndexedSeq[Block]
