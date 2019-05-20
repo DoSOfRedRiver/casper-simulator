@@ -4,7 +4,7 @@ package io.casperlabs.sim.blockchain_components.hashing
   * Wrapper for a cryptographic hash value.
   */
 case class Hash(bytes: Array[Byte]) extends Ordered[Hash] {
-  override lazy val hashCode: Int = calculateHashCode
+  override lazy val hashCode: Int = calculateHashCode //we memoize hashCode of this hash for performance optimization; it impacts all of the crucial data structures in the simulator
 
   override def toString: String = convertBytesToHex(bytes)
 

@@ -22,7 +22,6 @@ class ClientsTrafficGenerator[P, MS, CS <: ComputingSpace[P, MS]](
                                                                    transactionsGenerator: TransactionsGenerator[P, MS, CS]
                                                                  ) {
 
-
   private val lambda: Double = deploysPerSecond / 1000000 //rescaling to microseconds
   private var clock: Long = 0L
   private val eventIdGenerator = Iterator.iterate(0L)(_ + 1L)

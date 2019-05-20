@@ -4,7 +4,7 @@ import io.casperlabs.sim.BaseSpec
 import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.MockingSpace
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
-import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
+import io.casperlabs.sim.blockchain_components.hashing.{FakeHashGenerator, FakeSha256Digester}
 
 import scala.util.Random
 
@@ -78,8 +78,11 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   //#################################### TRANSACTIONS ##################################
 
+  val transactionHashGenerator = new FakeSha256Digester(random)
+
   "execution engine" must "execute account creation and sending some tokens to it" in {
     val tx1 = Transaction.AccountCreation(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -87,6 +90,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
       newAccount = account4
     )
     val tx2 = Transaction.EtherTransfer(
+      transactionHashGenerator.generateHash(),
       nonce = 1,
       sponsor = account1,
       gasPrice = 1,
@@ -106,6 +110,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "handle smart contract execution (successful case)" in {
     val tx = Transaction.SmartContractExecution(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -119,6 +124,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "handle smart contract execution (crashing by unhandled exception)" in {
     val tx = Transaction.SmartContractExecution(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -132,6 +138,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "handle smart contract execution (crashing by gas exceeded)" in {
     val tx = Transaction.SmartContractExecution(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -145,6 +152,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "handle smart contract execution (crashing by account balance insufficient to cover gas limit)" in {
     val tx = Transaction.SmartContractExecution(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -158,6 +166,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "refuse smart contract execution because of nonce mismatch" in {
     val tx = Transaction.SmartContractExecution(
+      transactionHashGenerator.generateHash(),
       nonce = 1,
       sponsor = account1,
       gasPrice = 1,
@@ -171,6 +180,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "execute adding to bonding queue (successful case)" in {
     val tx = Transaction.Bonding(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -187,6 +197,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "execute adding to unbonding queue (successful case)" in {
     val tx = Transaction.Unbonding(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -204,6 +215,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
 
   it must "discover account balance insufficient for doing too large transfer" in {
     val tx = Transaction.EtherTransfer(
+      transactionHashGenerator.generateHash(),
       nonce = 0,
       sponsor = account1,
       gasPrice = 1,
@@ -216,18 +228,19 @@ class DefaultExecutionEngineSpec extends BaseSpec {
     txResult1 shouldBe a [TransactionExecutionResult.AccountBalanceInsufficientForTransfer]
   }
 
-  it must "discover account balance insufficient for covering gas actually used" in {
-    val tx = Transaction.EtherTransfer(
-      nonce = 0,
-      sponsor = account1,
-      gasPrice = 1,
-      gasLimit = 200,
-      targetAccount = account4,
-      value = 999
-    )
-
-    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
-    txResult1 shouldBe a [TransactionExecutionResult.AccountBalanceLeftInsufficientForCoveringGasCostAfterTransactionWasExecuted]
-  }
+//  it must "discover account balance insufficient for covering gas actually used" in {
+//    val tx = Transaction.EtherTransfer(
+//      transactionHashGenerator.generateHash(),
+//      nonce = 0,
+//      sponsor = account1,
+//      gasPrice = 1,
+//      gasLimit = 200,
+//      targetAccount = account4,
+//      value = 999
+//    )
+//
+//    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+//    txResult1 shouldBe a [TransactionExecutionResult.AccountBalanceLeftInsufficientForCoveringGasCostAfterTransactionWasExecuted]
+//  }
 
 }

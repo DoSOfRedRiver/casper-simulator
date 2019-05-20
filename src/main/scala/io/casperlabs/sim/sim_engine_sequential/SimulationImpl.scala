@@ -80,7 +80,7 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
   def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult[R]): Unit = {
     if (processingResult.outgoingMessages.nonEmpty)
       log.debug(s"$clock: appending to queue: ${processingResult.outgoingMessages}")
-    for (item <- processingResult.outgoingMessages) {
+    for (item <- processingResult.outgoingMessages.reverse) {
       val sendingTimepoint = clock + item.relativeTimeOfSendingThisMessage
 
       item match {

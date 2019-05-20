@@ -2,6 +2,7 @@ package io.casperlabs.sim.data_generators
 
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
 import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Ether, Transaction}
+import io.casperlabs.sim.blockchain_components.hashing.FakeSha256Digester
 import io.casperlabs.sim.statistics.PseudoGaussianSelectionFromLongInterval
 
 import scala.collection.mutable
@@ -38,8 +39,11 @@ class TransactionsGenerator[P, MS, CS <: ComputingSpace[P, MS]](
   accountNonces ++= preExistingAccounts.mapValues(x => 0)
   var lastAccountId: Int = startingIdForNewAccounts
   val gasPriceGenerator = new PseudoGaussianSelectionFromLongInterval(random, gasPriceInterval)
+  val transactionHashGenerator = new FakeSha256Digester(random)
 
   def createTransaction(): Transaction = {
+    val txHash = transactionHashGenerator.generateHash()
+
     transactionTypeSelector.next() match {
       case "account-creation" =>
         lastAccountId += 1
@@ -47,18 +51,18 @@ class TransactionsGenerator[P, MS, CS <: ComputingSpace[P, MS]](
         accountBalances.put(newAccount, 0L)
         accountNonces.put(newAccount, 0L)
         val sponsor: Account = pickRandomAccount
-        return Transaction.AccountCreation(takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit = 100, newAccount)
+        return Transaction.AccountCreation(txHash, takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit = 100, newAccount)
 
       case "ether-transfer" =>
         val sourceAccount = pickRandomAccountWithNonzeroBalance
         val targetAccount = pickRandomAccountAvoiding(sourceAccount)
         val amount: Ether = (accountBalances(sourceAccount) * random.nextDouble()).toLong + 1
-        return Transaction.EtherTransfer(takeNonceFor(sourceAccount), sourceAccount, gasPriceGenerator.next(), gasLimit = 100, targetAccount, amount)
+        return Transaction.EtherTransfer(txHash, takeNonceFor(sourceAccount), sourceAccount, gasPriceGenerator.next(), gasLimit = 100, targetAccount, amount)
 
       case "smart-contract-exec" =>
         val sponsor: Account = pickRandomAccount
         val (program, gasLimit) = computingSpaceProgramsGenerator.next()
-        return Transaction.SmartContractExecution(takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit, program)
+        return Transaction.SmartContractExecution(txHash, takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit, program)
     }
   }
 

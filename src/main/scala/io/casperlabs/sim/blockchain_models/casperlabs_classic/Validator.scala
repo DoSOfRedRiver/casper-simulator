@@ -1,6 +1,6 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, NodeId, ValidatorId}
+import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, BlocksExecutor, NodeId, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.{BinaryArraySpace, ComputingSpace}
 import io.casperlabs.sim.blockchain_components.execution_engine.{DefaultExecutionEngine, Gas, GlobalState, Transaction}
 import io.casperlabs.sim.blockchain_components.gossip.Gossip
@@ -52,6 +52,9 @@ class Validator(
 
   //justifications DAG
   private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesisBlock)
+
+  //latest block I created and published (if any)
+  private val myOwnLatestBlock: Option[NormalBlock] = None
 
   // TODO: do this without a var
   private var lastProposeTime: Timepoint = Timepoint(0L)
@@ -106,7 +109,7 @@ class Validator(
   private def handleIncomingBlock(block: NormalBlock): Unit = {
     log.debug(s"${context.timeOfCurrentEvent}: received block ${block.id} with daglevel=${block.dagLevel} created by ${block.creator}")
 
-    attemptAddingIncomingBlockToLocalBlockdag(block) match {
+    validateIncomingBlockAndAttemptAddingItToLocalBlockdag(block) match {
       case AddBlockResult.AlreadyAdded =>
       // We got this block already, nothing to do
 
@@ -120,9 +123,6 @@ class Validator(
       // No new messages need to be sent.
       // TODO: slashing
 
-      case AddBlockResult.InvalidPostStateHash =>
-      //todo: slashing
-
       case AddBlockResult.Valid =>
         // Block is valid, gossip to others
         //todo: this does not work correctly with current mock of gossiping (clarify/fix this !)
@@ -134,21 +134,21 @@ class Validator(
         if (blocksWaitingForThisOne.nonEmpty) {
           for (a <- blocksWaitingForThisOne)
             if (!blockBuffer.hasSource(a))
-              this.attemptAddingIncomingBlockToLocalBlockdag(a) //we are not checking the result because this time is must be a success //todo: add assertion here ?
+              this.validateIncomingBlockAndAttemptAddingItToLocalBlockdag(a) //we are not checking the result because this time is must be a success //todo: add assertion here ?
         }
     }
 
   }
 
-  private def attemptAddingIncomingBlockToLocalBlockdag(b: NormalBlock): AddBlockResult =
+  private def validateIncomingBlockAndAttemptAddingItToLocalBlockdag(b: NormalBlock): AddBlockResult =
     (pDag.insert(b, b.parents), jDag.insert(b, b.justifications)) match {
       case (DoublyLinkedDag.InsertResult.Success(pInsert), DoublyLinkedDag.InsertResult.Success(jInsert)) =>
-        if (verifyPostStateHash(b)) {
+        if (validateIncomingBlock(b)) {
           pInsert()
           jInsert()
           AddBlockResult.Valid
         } else {
-          AddBlockResult.InvalidPostStateHash
+          AddBlockResult.Invalid
         }
 
       case (_, DoublyLinkedDag.InsertResult.MissingTargets(jMissing)) =>
@@ -164,20 +164,27 @@ class Validator(
         throw new RuntimeException("Unreachable state")
     }
 
-  private def verifyPostStateHash(block: NormalBlock): Boolean = {
+  //due to simplifications done in the simulator (and the fact that we do not have to defend against our own source code),
+  //the validation of incoming blocks done here is quite limited (as compared to the real implementation of the blockchain)
+  private def validateIncomingBlock(block: NormalBlock): Boolean = {
+    if (block.parents(0).postStateHash != block.preStateHash) {
+      log.debug(s"block ${block.id}: pre-state hash mismatch")
+      return false
+    }
+
     globalStatesStorage.read(block.preStateHash) match {
       case Some(preState) =>
-        val (gs, gas) = blocksExecutor.executeBlockAsVerifier(preState, block)
+        val (gs, gas, fatalErrors) = blocksExecutor.executeBlock(preState, block)
         val postStateHash = executionEngine.globalStateHash(gs)
         if (postStateHash == block.postStateHash && gas == block.gasBurned) {
           globalStatesStorage.store(gs)
           return true
         } else {
-          //this block is invalid, we just throw it away
-          //todo: logging here
+          log.debug(s"block ${block.id}: post-state mismatch")
           return false
         }
       case None =>
+        //if this happens then we have a bug; successful insertion in pDAG implies that we (should) have seen and validated parents before
         throw new RuntimeException(s"pre-state of block ${block.id} was not found in storage")
     }
   }
@@ -191,8 +198,9 @@ class Validator(
   private[this] def createAndPublishNewBlock(): Unit = {
     // TODO: check for equivocations?
     //todo: implement merging or parents; for now we implement block-tree only
-    val latestMessages: Map[ValidatorId, Block] = (jDag.tips.groupBy(_.creator) - Block.psuedoValidatorIdUsedForGenesisBlock).mapValues(_.head)
 
+    //run fork-choice; in this variant of consensus we select only one parent (hence the blockdag is a tree)
+    val latestMessages: Map[ValidatorId, Block] = (jDag.tips.groupBy(_.creator) - Block.psuedoValidatorIdUsedForGenesisBlock).mapValues(_.head)
     val selectedParentBlock = BlockdagUtils.lmdMainchainGhost[ValidatorId, Block, Hash](
       latestMessages,
       validatorWeightExtractor = (block, vid) => block.weightsMap.getOrElse(vid, 0L),
@@ -201,47 +209,64 @@ class Validator(
       tieBreaker = block => block.id
     )
 
+    //take the post-state hash of the selected to-become-parent block
     val preStateHash: Hash = selectedParentBlock.postStateHash
+
+    //because we have this block in our local copy of the blockdag
+    //and upon including any block in local blockdag we ALWAYS store the post-state of this block in the global states storage
+    //so we should be able to retrieve the global state associated with its post-state hash
     val preState: GlobalState[MS] = globalStatesStorage.read(preStateHash).get
+
+    //it is possible that I am not an active validator in this line of the "world evolution"; in such case I of course cannot propose blocks
+    //so the only reasonable move is to give up with proposing this block
     if (preState.validatorsBook.currentStakeOf(validatorId) == 0)
-      return //I am not an active validator in this line of the world, so I cannot propose blocks !
-    val parents: IndexedSeq[Block] = IndexedSeq(selectedParentBlock)
+      return
+
+    //we clear the buffer of transactions, taking all of them to be included in the new block
     val transactions = deployBuffer.toIndexedSeq
-    val justifications: IndexedSeq[Block] = latestMessages.values.toIndexedSeq
-    val justificationsIds: IndexedSeq[Hash] = justifications.map(b => b.id)
-    val newBlockId: Hash = blocksExecutor.calculateBlockId(
-      validatorId,
-      parents = IndexedSeq(selectedParentBlock.id),
-      justificationsIds,
-      transactions,
-      preStateHash
-    )
-    val pTimeOfTheNewBlock: Gas = selectedParentBlock.pTime + selectedParentBlock.gasBurned
-    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(preState, pTimeOfTheNewBlock, newBlockId, validatorId, transactions)
-    val postStateHash = executionEngine.globalStateHash(postState)
-
-    val block = NormalBlock(
-      id = newBlockId,
-      creator = validatorId,
-      dagLevel = parents.map(_.dagLevel).max + 1,
-      parents,
-      justifications,
-      transactions,
-      pTimeOfTheNewBlock,
-      gasBurned,
-      postState.validatorsBook.validatorWeightsMap,
-      preStateHash,
-      postStateHash
-    )
-
-    pDag.insert(block, parents)
-    jDag.insert(block, block.justifications)
-    globalStatesStorage.store(postState)
-
-    gossipService.gossip(block)
     deployBuffer.clear()
 
-    log.debug(s"${context.timeOfCurrentEvent}: publishing new block ${block.id} with daglevel=${block.dagLevel} and ${block.transactions.size} transactions")
+    //now we physically make the new block
+    val pTimeOfTheNewBlock: Gas = selectedParentBlock.pTime + selectedParentBlock.gasBurned
+    val parents: IndexedSeq[Block] = IndexedSeq(selectedParentBlock)
+    val justifications: IndexedSeq[Block] = latestMessages.values.toIndexedSeq
+    val dagLevel = parents.map(_.dagLevel).max + 1
+    val myLatestBlockPositionInMyChain: Int = myOwnLatestBlock match {
+      case None => 0
+      case Some(b) => b.positionInPerValidatorChain
+    }
+    val blockCreationResult: BlocksExecutor.BlockCreationResult[MS] = blocksExecutor.createBlock(
+      preState,
+      pTimeOfTheNewBlock,
+      dagLevel,
+      myLatestBlockPositionInMyChain + 1,
+      validatorId,
+      parents,
+      justifications,
+      deployBuffer.toIndexedSeq)
+
+    //transactions with fatal errors are not included in the new block; before throwing them away we do some logging
+    if (log.isDebugEnabled) {
+      for ((txHash, txStatus) <- blockCreationResult.txExecutionResults if txStatus.isFatal)
+        log.debug(s"${context.timeOfCurrentEvent}: discarding transaction $txHash - fatal error during execution against global state $preStateHash, error = $txStatus")
+    }
+
+    //if the resulting block contains no transactions (= all transactions were discarded due to fatal errors), we discard the whole block
+    if (blockCreationResult.block.transactions.isEmpty) {
+      log.debug(s"discarding creation of empty block")
+      return
+    }
+
+    //adding the just created block to the local blockdag
+    pDag.insert(blockCreationResult.block, parents)
+    jDag.insert(blockCreationResult.block, justifications)
+
+    //adding the post-state of newly created block to the local storage of global states
+    globalStatesStorage.store(blockCreationResult.postState)
+
+    //announcing the new block to all other validators
+    gossipService.gossip(blockCreationResult.block)
+    log.debug(s"${context.timeOfCurrentEvent}: publishing new block ${blockCreationResult.block.id} with daglevel=$dagLevel (${blockCreationResult.block.transactions.size} transactions)")
   }
 
 }
@@ -255,6 +280,5 @@ object Validator {
     case class MissingJustifications(blocks: IndexedSeq[Block]) extends AddBlockResult
     case object Invalid extends AddBlockResult // TODO: add reason?
     case object Valid extends AddBlockResult
-    case object InvalidPostStateHash extends AddBlockResult
   }
 }

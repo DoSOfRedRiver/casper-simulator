@@ -1,7 +1,9 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
+import java.io.ByteArrayInputStream
+
 import io.casperlabs.sim.abstract_blockchain.{AbstractBlock, AbstractNormalBlock, BlockId, ValidatorId}
-import io.casperlabs.sim.blockchain_components.execution_engine.{Ether, Gas, Transaction}
+import io.casperlabs.sim.blockchain_components.execution_engine.{Ether, Gas, Transaction, TransactionExecutionResult}
 import io.casperlabs.sim.blockchain_components.hashing.{Hash, RealSha256Digester}
 
 sealed abstract class Block extends AbstractBlock {
@@ -11,13 +13,22 @@ sealed abstract class Block extends AbstractBlock {
   def postStateHash: Hash
   def creator: ValidatorId //todo: should not be here; added for now so to make DoublyLinkedDag working (refactoring needed !)
   def weightsMap: Map[ValidatorId, Ether] //weights map used for transactions in this block (= after the initial bonding/unbonding queue processing is done !)
+
+  //we override here default equals implementation for case classes
+  override def equals(obj: Any): Boolean =
+    obj match {
+      case b: Block => this.id == b.id
+      case _ => false
+    }
+
+  override def hashCode(): Int = id.hashCode
+
 }
 
 /**
   * Represents genesis blocks.
-  * We may have many of them (different genesis blocks in different blockchain networks).
   *
-  * Semantics of Genesis block is different that any other block:
+  * Semantics of Genesis block is different than any other block:
   * 1. Genesis has no parent.
   * 2. Genesis has no creator (because it is given as a bootstrap).
   * 3. Genesis has no justifications.
@@ -31,6 +42,7 @@ case class Genesis private (id: BlockId, weightsMap: Map[ValidatorId, Ether], po
   override def pTime = 0
   override def gasBurned: Gas = 0
   override def creator: ValidatorId = Block.psuedoValidatorIdUsedForGenesisBlock //todo: refactoring around DAG processing is needed to remove the need for fake validator id in this place
+  override val pseudoId: AbstractBlock.PseudoId = AbstractBlock.PseudoId(Block.psuedoValidatorIdUsedForGenesisBlock, 0)
 }
 
 /**
@@ -40,15 +52,20 @@ case class NormalBlock(
                         id: BlockId,
                         creator: ValidatorId,
                         dagLevel: Int,
+                        positionInPerValidatorChain: Int,
                         parents: IndexedSeq[Block],
                         justifications: IndexedSeq[Block],
                         transactions: IndexedSeq[Transaction],
+                        executionResults: IndexedSeq[TransactionExecutionResult],
                         pTime: Gas,
                         gasBurned: Gas,
                         weightsMap: Map[ValidatorId, Ether],
                         preStateHash: Hash,
                         postStateHash: Hash
-                      ) extends Block with AbstractNormalBlock
+                      ) extends Block with AbstractNormalBlock {
+
+  override val pseudoId: AbstractBlock.PseudoId = AbstractBlock.PseudoId(creator, positionInPerValidatorChain)
+}
 
 object Block {
 
@@ -60,6 +77,8 @@ object Block {
   }
 
   val psuedoValidatorIdUsedForGenesisBlock: ValidatorId = -1
+
+  val blankHash: Hash = Hash(new Array[Byte](32))
 
 }
 

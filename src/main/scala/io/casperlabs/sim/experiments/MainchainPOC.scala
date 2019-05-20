@@ -209,7 +209,7 @@ object MainchainPOC {
       trafficPerNode = Map.empty, //todo make this part of the config once the support on ClientsTrafficGenerator's side is fixed
       initialAccounts = accountIds.map(account => account -> initialEtherPerGenesisValidator).toMap,
       agentRefs,
-      deploysPerSecond = 1,
+      deploysPerSecond = 10,
       transactionsGenerator
     )
 

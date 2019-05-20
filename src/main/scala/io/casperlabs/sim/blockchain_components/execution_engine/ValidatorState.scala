@@ -1,6 +1,6 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
-import io.casperlabs.sim.abstract_blockchain.{BlockId, ValidatorId}
+import io.casperlabs.sim.abstract_blockchain.{AbstractBlock, ValidatorId}
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorState.UnconsumedBlockRewardInfo
 import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
@@ -27,7 +27,7 @@ class ValidatorState private (
                             )
 {
 
-  def registerBlockRewardDue(blockId: BlockId, amount: Ether, pTime: Gas): ValidatorState =
+  def registerBlockRewardDue(blockId: AbstractBlock.PseudoId, amount: Ether, pTime: Gas): ValidatorState =
     if (amount == 0) //this actually happens as a corner case, where the block burned only tiny amount of gas and the stake of validator is so small,
       this           //that effective reward is less than 0 ether; then rounding comes into play and we end up with zero
     else
@@ -62,7 +62,8 @@ class ValidatorState private (
     digester.updateWith(unbondingEscrow)
     for (item <- unconsumedBlockRewards) {
       digester.updateWith(item.amount)
-      digester.updateWith(item.blockId)
+      digester.updateWith(item.blockId.positionInPerValidatorChain)
+      digester.updateWith(item.blockId.validator)
       digester.updateWith(item.pTimeWhenEarned)
     }
   }
@@ -75,7 +76,7 @@ object ValidatorState {
     new ValidatorState(id, account, stake, 0, 0, Queue.empty[UnconsumedBlockRewardInfo])
 
 
-  case class UnconsumedBlockRewardInfo(pTimeWhenEarned: Gas, blockId: BlockId, amount: Ether) extends Ordered[UnconsumedBlockRewardInfo] {
+  case class UnconsumedBlockRewardInfo(pTimeWhenEarned: Gas, blockId: AbstractBlock.PseudoId, amount: Ether) extends Ordered[UnconsumedBlockRewardInfo] {
     override def compare(that: UnconsumedBlockRewardInfo): Int = this.pTimeWhenEarned.compareTo(that.pTimeWhenEarned)
   }
 
