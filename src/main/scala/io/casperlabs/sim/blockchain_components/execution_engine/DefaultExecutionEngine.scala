@@ -36,8 +36,10 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
       return (gs, TransactionExecutionResult.SponsorAccountUnknown(transaction.sponsor))
 
     //fatal 2: nonce mismatch
-    if (gs.accounts.getNonceOf(transaction.sponsor) != transaction.nonce)
-      return (gs, TransactionExecutionResult.NonceMismatch(gs.accounts.getNonceOf(transaction.sponsor), transaction.nonce))
+//todo: re-enable nonce mismatch checking after finalization is completed and ClientTrafficGenerator can use it to correctly generate nonces
+
+//    if (gs.accounts.getNonceOf(transaction.sponsor) != transaction.nonce)
+//      return (gs, TransactionExecutionResult.NonceMismatch(gs.accounts.getNonceOf(transaction.sponsor), transaction.nonce))
 
     //fatal 3: sponsor does not have enough ether to cover declared gas limit
     if (gs.accountBalance(transaction.sponsor) < transaction.gasLimit * effectiveGasPrice)
@@ -150,10 +152,13 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
   }
 
   private def executeEtherTransfer(gs: GlobalState[MS], tx: Transaction.EtherTransfer): (GlobalState[MS], TransactionExecutionResult) = {
-    return if (gs.accountBalance(tx.sponsor) >= tx.value)
-      (gs.transfer(tx.sponsor, tx.targetAccount, tx.value), TransactionExecutionResult.Success(config.transferCost))
-    else
-      (gs, TransactionExecutionResult.AccountBalanceInsufficientForTransfer(config.transferCost, tx.value, gs.accountBalance(tx.sponsor)))
+    if (! gs.accounts.contains(tx.targetAccount))
+      return (gs, TransactionExecutionResult.TargetAccountUnknown(config.transferCost, tx.targetAccount))
+
+    if (gs.accountBalance(tx.sponsor) < tx.value)
+      return (gs, TransactionExecutionResult.AccountBalanceInsufficientForTransfer(config.transferCost, tx.value, gs.accountBalance(tx.sponsor)))
+
+    return (gs.transfer(tx.sponsor, tx.targetAccount, tx.value), TransactionExecutionResult.Success(config.transferCost))
   }
 
   private def executeBonding(gs: GlobalState[MS], tx: Transaction.Bonding, blockTime: Gas): (GlobalState[MS], TransactionExecutionResult) = {

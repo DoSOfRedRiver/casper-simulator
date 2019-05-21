@@ -4,6 +4,7 @@ import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, BlocksExecutor, 
 import io.casperlabs.sim.blockchain_components.computing_spaces.{BinaryArraySpace, ComputingSpace}
 import io.casperlabs.sim.blockchain_components.execution_engine.{DefaultExecutionEngine, Gas, GlobalState, Transaction}
 import io.casperlabs.sim.blockchain_components.gossip.Gossip
+import io.casperlabs.sim.blockchain_components.graphs.DoublyLinkedDag.InsertResult
 import io.casperlabs.sim.blockchain_components.graphs.{DoublyLinkedDag, IndexedTwoArgRelation}
 import io.casperlabs.sim.blockchain_components.hashing.Hash
 import io.casperlabs.sim.blockchain_components.pretty_printing.{BlockdagPrettyPrinter, BlocksBufferPrettyPrinter}
@@ -12,6 +13,7 @@ import io.casperlabs.sim.simulation_framework._
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 /**
   * Agent plugin that encapsulates validator's main logic:
@@ -41,7 +43,9 @@ class Validator(
   type GS = GlobalState[MS]
 
   //transactions arrived from clients, but not yet published in blocks
-  private val deployBuffer: mutable.HashSet[Transaction] = mutable.HashSet.empty
+  //caution: we use ArrayBuffer here so to retain the ordering of incoming transactions, so the inter-transaction dependencies (if any) are properly processed
+  //todo: consider auto sorting by nonce (per sponsor account) on block creation
+  private val deployBuffer: ArrayBuffer[Transaction] = new ArrayBuffer[Transaction]
 
   //buffer of blocks we failed to integrate with local blockdag because of missing justifications
   //this is represented as 2-arg relation; entry (a,b) in this relation means "block a is missing a justification b"
@@ -55,7 +59,7 @@ class Validator(
   private val jDag: DoublyLinkedDag[Block] = DoublyLinkedDag.jBlockDag(genesisBlock)
 
   //latest block I created and published (if any)
-  private val myOwnLatestBlock: Option[NormalBlock] = None
+  private var myOwnLatestBlock: Option[NormalBlock] = None
 
   // TODO: do this without a var
   private var lastProposeTime: Timepoint = Timepoint(0L)
@@ -72,7 +76,7 @@ class Validator(
 //###################################### PLUGIN CALLBACKS ########################################
 
   override def startup(): Unit = {
-    log.debug(s"${context.timeOfCurrentEvent}: startup of ${context.selfLabel}")
+    log.info(s"${context.timeOfCurrentEvent}: startup of ${context.selfLabel}")
     globalStatesStorage.store(genesisGlobalState)
     thisAgent.setTimerEvent(proposeDelay, ProposeTik)
   }
@@ -105,7 +109,10 @@ class Validator(
 //#################################################################################################
 
   private def handleIncomingBlock(block: NormalBlock): Unit = {
-    log.trace(s"${context.timeOfCurrentEvent}: received block ${block.id} with daglevel=${block.dagLevel} created by ${block.creator}, current blocks buffer is: ${BlocksBufferPrettyPrinter.print(blockBuffer)}")
+    if (log.isTraceEnabled) {
+      val blocksBufferDump = if (blockBuffer.isEmpty) "[empty]" else "\n" + BlocksBufferPrettyPrinter.print(blockBuffer)
+      log.trace(s"${context.timeOfCurrentEvent}: received block $block, current blocks buffer is: $blocksBufferDump")
+    }
 
     validateIncomingBlockAndAttemptAddingItToLocalBlockdag(block) match {
       case AddBlockResult.AlreadyAdded =>
@@ -116,7 +123,7 @@ class Validator(
         for (j <- justifications)
           blockBuffer.addPair(block, j.asInstanceOf[NormalBlock]) //this casting is legal because Genesis block is always present (hence cannot be missing and registered as missing dependency)
         //todo: add block buffer purging here (if a block stays in the buffer for too long, it should be discarded because we assume it must be a side-effect of hacking attempt)
-        log.trace("incoming block case: missing justification")
+        log.trace(s"incoming block case: missing justifications: ${justifications.map(_.shortId).mkString(",")}, updated blocks buffer to: \n${BlocksBufferPrettyPrinter.print(blockBuffer)}")
 
       case AddBlockResult.Invalid =>
         // Something is wrong with the block.
@@ -139,8 +146,8 @@ class Validator(
               this.validateIncomingBlockAndAttemptAddingItToLocalBlockdag(a) //we are not checking the result because this time is must be a success //todo: add assertion here ?
         }
 
-        log.trace(s"final pDag: \n ${BlockdagPrettyPrinter.print(pDag)}")
-        log.trace(s"final blocks buffer: \n: ${BlocksBufferPrettyPrinter.print(blockBuffer)}")
+        log.trace(s"final pDag: \n${BlockdagPrettyPrinter.print(pDag)}")
+        log.trace(s"final blocks buffer: \n:${BlocksBufferPrettyPrinter.print(blockBuffer)}")
     }
 
   }
@@ -173,7 +180,7 @@ class Validator(
   //the validation of incoming blocks done here is quite limited (as compared to the real implementation of the blockchain)
   private def validateIncomingBlock(block: NormalBlock): Boolean = {
     if (block.parents(0).postStateHash != block.preStateHash) {
-      log.debug(s"block ${block.id}: pre-state hash mismatch")
+      log.debug(s"block ${block.shortId}: pre-state hash mismatch")
       return false
     }
 
@@ -185,12 +192,12 @@ class Validator(
           globalStatesStorage.store(gs)
           return true
         } else {
-          log.debug(s"block ${block.id}: post-state mismatch")
+          log.debug(s"block ${block.shortId}: post-state mismatch")
           return false
         }
       case None =>
         //if this happens then we have a bug; successful insertion in pDAG implies that we (should) have seen and validated parents before
-        throw new RuntimeException(s"pre-state of block ${block.id} was not found in storage")
+        throw new RuntimeException(s"pre-state of block ${block.shortId} was not found in storage")
     }
   }
 
@@ -238,7 +245,7 @@ class Validator(
     //now we physically make the new block
     val pTimeOfTheNewBlock: Gas = selectedParentBlock.pTime + selectedParentBlock.gasBurned
     val parents: IndexedSeq[Block] = IndexedSeq(selectedParentBlock)
-    val justifications: IndexedSeq[Block] = latestMessages.values.toIndexedSeq
+    val justifications: IndexedSeq[Block] = if (latestMessages.isEmpty) IndexedSeq(genesisBlock) else latestMessages.values.toIndexedSeq
     val dagLevel = parents.map(_.dagLevel).max + 1
     val myLatestBlockPositionInMyChain: Int = myOwnLatestBlock match {
       case None => 0
@@ -267,15 +274,37 @@ class Validator(
     }
 
     //adding the just created block to the local blockdag
-    pDag.insert(blockCreationResult.block, parents)
-    jDag.insert(blockCreationResult.block, justifications)
+    pDag.insert(blockCreationResult.block, parents) match {
+      case DoublyLinkedDag.InsertResult.AlreadyInserted() =>
+        //not possible
+        throw new RuntimeException("line unreachable")
+      case DoublyLinkedDag.InsertResult.MissingTargets(_) =>
+        //not possible
+        throw new RuntimeException("line unreachable")
+      case InsertResult.Success(continuation) =>
+        continuation() //actually adding the block happens here
+    }
+
+    jDag.insert(blockCreationResult.block, justifications) match {
+      case DoublyLinkedDag.InsertResult.AlreadyInserted() =>
+        //not possible
+        throw new RuntimeException("line unreachable")
+      case DoublyLinkedDag.InsertResult.MissingTargets(_) =>
+        //not possible
+        throw new RuntimeException("line unreachable")
+      case InsertResult.Success(continuation) =>
+        continuation() //actually adding the block happens here
+    }
 
     //adding the post-state of newly created block to the local storage of global states
     globalStatesStorage.store(blockCreationResult.postState)
 
     //announcing the new block to all other validators
     gossipService.gossip(blockCreationResult.block)
-    log.debug(s"${context.timeOfCurrentEvent}: publishing new block ${blockCreationResult.block.id} with daglevel=$dagLevel (${blockCreationResult.block.transactions.size} transactions)")
+    log.debug(s"${context.timeOfCurrentEvent}: publishing new block ${blockCreationResult.block}, while my local pDAG is: \n${BlockdagPrettyPrinter.print(pDag)}")
+
+    //storing local pointer to my latest block
+    myOwnLatestBlock = Some(blockCreationResult.block)
   }
 
 }

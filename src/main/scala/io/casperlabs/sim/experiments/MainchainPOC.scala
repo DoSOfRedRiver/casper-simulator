@@ -14,7 +14,8 @@ import io.casperlabs.sim.data_generators.{BinaryArraySpaceProgramsGenerator, Cli
 import io.casperlabs.sim.sim_engine_sequential.SimulationImpl
 import io.casperlabs.sim.simulation_framework.SimEventsQueueItem.ExternalEvent
 import io.casperlabs.sim.simulation_framework._
-import io.casperlabs.sim.statistics.GaussDistributionParams
+import io.casperlabs.sim.statistics.{GaussDistributionParams, PseudoGaussianSelectionFromIntInterval}
+import org.slf4j.LoggerFactory
 
 import scala.util.Random
 
@@ -25,32 +26,50 @@ import scala.util.Random
 object MainchainPOC {
 
   def main(args: Array[String]): Unit = {
-    if (args.length != 4) {
-      println(s"Expected are exactly 4 command-line arguments:")
+    if (args.length != 5) {
+      println(s"Expected are exactly 5 command-line arguments:")
       println(s"    number of validators [integer]")
-      println(s"    number of validators bonded at genesis [integer]")
       println(s"    simulation length time unit [enumeration: sec, min, hou, day]")
-      println(s"    simulation length [integer")
+      println(s"    simulation length [integer]")
+      println(s"    client-side average traffic [deploys per second]")
+      println(s"    logging level [info/warn/debug/trace]")
       System.exit(1)
     }
 
     val numberOfValidators = args(0).toInt
-    val numberOfValidatorsBondedAtGenesis = args(1).toInt
-    val simulationEnd = args(2) match {
-      case "sec" => Timepoint.seconds(args(3).toLong)
-      case "min" => Timepoint.minutes(args(3).toLong)
-      case "hou" => Timepoint.hours(args(3).toLong)
-      case "day" => Timepoint.days(args(3).toLong)
+    val numberOfValidatorsBondedAtGenesis = numberOfValidators
+    val simulationEnd = args(1) match {
+      case "sec" => Timepoint.seconds(args(2).toLong)
+      case "min" => Timepoint.minutes(args(2).toLong)
+      case "hou" => Timepoint.hours(args(2).toLong)
+      case "day" => Timepoint.days(args(2).toLong)
     }
+    val clientTraffic = args(3).toInt
+    val loggingLevel = args(4)
 
-    this.launchSimulation(numberOfValidators, numberOfValidatorsBondedAtGenesis, simulationEnd)
+    this.setLoggingLevel(loggingLevel)
+    this.launchSimulation(numberOfValidators, numberOfValidatorsBondedAtGenesis, simulationEnd, clientTraffic)
   }
+
+  def setLoggingLevel(level: String): Unit = {
+    val root = LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME).asInstanceOf[ch.qos.logback.classic.Logger]
+    level match {
+      case "info" => root.setLevel(ch.qos.logback.classic.Level.INFO)
+      case "warn" => root.setLevel(ch.qos.logback.classic.Level.WARN)
+      case "debug" => root.setLevel(ch.qos.logback.classic.Level.DEBUG)
+      case "trace" => root.setLevel(ch.qos.logback.classic.Level.TRACE)
+    }
+  }
+
+  //###########################################################################################
+
+  val networkDelayMinMillisecondsInterval: (Int,Int) = (100, 30000)
 
   //###################################### BLOCKCHAIN CONFIG ##################################
 
   val initialEtherPerGenesisValidator: Ether = 1000 * 1000
   val initialStakePerGenesisValidator: Ether = 1000
-  val blockProposeDelay: TimeDelta = seconds(5)
+  val blockProposeDelayInSecondsInterval: (Int,Int) = (10, 30)
 
   val blockchainConfig: BlockchainConfig = new BlockchainConfig {
 
@@ -90,7 +109,7 @@ object MainchainPOC {
   val initialMemoryState: MS = computingSpace.initialState
   val executionEngine = new DefaultExecutionEngine(blockchainConfig, computingSpace)
   val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](executionEngine, blockchainConfig)
-  val sharedSourceOfRandomness = new Random(42)
+  val sharedSourceOfRandomness = new Random
 
 
   def label(id: Int): String = s"validator-$id"
@@ -99,7 +118,7 @@ object MainchainPOC {
 
   def seconds(n: Long): TimeDelta = n * 1000000
 
-  private def launchSimulation(numberOfValidators: Int, numberOfValidatorsBondedAtGenesis: Int, simulationEnd: Timepoint): Unit = {
+  private def launchSimulation(numberOfValidators: Int, numberOfValidatorsBondedAtGenesis: Int, simulationEnd: Timepoint, clientTraffic: Int): Unit = {
 
     //########################################## GENESIS ##############################################
 
@@ -163,8 +182,8 @@ object MainchainPOC {
 
     val network = new UniformNetwork(
       sharedSourceOfRandomness,
-      minDelay = millis(20),
-      maxDelay = millis(500),
+      minDelay = millis(networkDelayMinMillisecondsInterval._1),
+      maxDelay = millis(networkDelayMinMillisecondsInterval._2),
       dropRate = 0.0
     )
 
@@ -173,6 +192,7 @@ object MainchainPOC {
     val nodeId2id: Map[NodeId, Int] = id2NodeId map { case (k,v) => (v,k) }
     val nodeId2agentLabel: Map[NodeId, String] = nodeId2id.mapValues(id => label(id))
     val globalStatesStorage = new GlobalStatesStorage(executionEngine)
+    val blockProposalDelaySelector = new PseudoGaussianSelectionFromIntInterval(sharedSourceOfRandomness, blockProposeDelayInSecondsInterval)
 
     def buildNewValidatorNode(id: Int): ValidatorNode = {
       val thisNodeId: NodeId = id2NodeId(id)
@@ -185,7 +205,7 @@ object MainchainPOC {
         genesisBlock,
         genesisGlobalState,
         gossipPlugin,
-        blockProposeDelay,
+        seconds(blockProposalDelaySelector.next()),
         globalStatesStorage
       )
 
@@ -209,7 +229,7 @@ object MainchainPOC {
       trafficPerNode = Map.empty, //todo make this part of the config once the support on ClientsTrafficGenerator's side is fixed
       initialAccounts = accountIds.map(account => account -> initialEtherPerGenesisValidator).toMap,
       agentRefs,
-      deploysPerSecond = 10,
+      deploysPerSecond = clientTraffic,
       transactionsGenerator
     )
 

@@ -48,25 +48,29 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
           clock = event.scheduledDeliveryTime
           event match {
             case msg: AgentToAgentMsg =>
-              log.debug(s"$clock: [${msg.id}] agent-msg ${msg.payload.getClass.getSimpleName} from ${msg.source} to ${msg.destination}")
+              log.debug(s"$clock: [${msg.id}] delivering agent-msg from:${msg.source} to:${msg.destination} sent:${msg.sentTime} payload:${msg.payload}")
+              if (msg.id % 1000 == 0)
+                log.info(s"$clock: ${msg.id} .......... agent->agent messages delivered")
               val agent = unsafeGetAgent(msg.destination, msg)
               val processingResult: MsgHandlingResult[R] = agent.handleMessage(msg)
               applyEventProcessingResultToSimState(msg.destination, processingResult)
 
             case ev: ExternalEvent =>
-              log.debug(s"$clock: [${ev.id}] ext-event ${ev.payload.getClass.getSimpleName} to ${ev.affectedAgent}")
+              log.debug(s"$clock: [${ev.id}] delivering ext-event ${ev.payload.getClass.getSimpleName} to ${ev.affectedAgent}")
+              if (ev.id % 1000 == 0)
+                log.info(s"$clock: .......... ${ev.id} external events delivered")
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
               val processingResult: MsgHandlingResult[R] = agent.handleExternalEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
 
             case ev: NewAgentCreation[R] =>
-              log.debug(s"$clock: [${ev.id}] agent-cre ${ev.agentInstance.label}")
+              log.debug(s"$clock: [${ev.id}] delivering agent-cre ${ev.agentInstance.label}")
               val agentRef = privateRegisterAgent(ev.agentInstance)
               val processingResult: MsgHandlingResult[R] = ev.agentInstance.onStartup(ev.scheduledDeliveryTime)
               applyEventProcessingResultToSimState(agentRef, processingResult)
 
             case ev: PrivateEvent =>
-              log.debug(s"$clock: [${ev.id}] >>timer<< ${ev.payload.getClass.getSimpleName} for ${ev.affectedAgent}")
+              log.debug(s"$clock: [${ev.id}] delivering >>timer<< ${ev.payload.getClass.getSimpleName} for ${ev.affectedAgent}")
               val agent = unsafeGetAgent(ev.affectedAgent, ev)
               val processingResult: MsgHandlingResult[R] = agent.handlePrivateEvent(ev)
               applyEventProcessingResultToSimState(ev.affectedAgent, processingResult)
@@ -79,7 +83,7 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
 
   def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult[R]): Unit = {
     if (processingResult.outgoingMessages.nonEmpty)
-      log.debug(s"$clock: appending to queue: ${processingResult.outgoingMessages}")
+      log.debug(s"$clock: appending to queue: \n    ${processingResult.outgoingMessages.mkString("\n    ")}")
     for (item <- processingResult.outgoingMessages.reverse) {
       val sendingTimepoint = clock + item.relativeTimeOfSendingThisMessage
 

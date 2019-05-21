@@ -48,6 +48,10 @@ object TransactionExecutionResult {
     override def isFatal: Boolean = false
   }
 
+  case class TargetAccountUnknown(gasBurned: Gas, missingAccount: Account) extends TransactionExecutionResult {
+    override def isFatal: Boolean = false
+  }
+
   case class SmartContractUnhandledException(gasBurned: Gas) extends TransactionExecutionResult {
     override def isFatal: Boolean = false
   }

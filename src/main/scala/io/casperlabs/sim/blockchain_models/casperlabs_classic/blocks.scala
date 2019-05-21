@@ -1,7 +1,5 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import java.io.ByteArrayInputStream
-
 import io.casperlabs.sim.abstract_blockchain.{AbstractBlock, AbstractNormalBlock, BlockId, ValidatorId}
 import io.casperlabs.sim.blockchain_components.execution_engine.{Ether, Gas, Transaction, TransactionExecutionResult}
 import io.casperlabs.sim.blockchain_components.hashing.{Hash, RealSha256Digester}
@@ -65,6 +63,13 @@ case class NormalBlock(
                       ) extends Block with AbstractNormalBlock {
 
   override val pseudoId: AbstractBlock.PseudoId = AbstractBlock.PseudoId(creator, positionInPerValidatorChain)
+
+  override lazy val toString: String = {
+    val js = justifications.map(_.shortId).mkString(",")
+    val ps = parents.map(_.shortId).mkString(",")
+    s"block-${this.shortId}[creator=$creator ptime=$pTime daglevel=$dagLevel j=($js) p=($ps) gas=$gasBurned #tx=${transactions.size}]"
+  }
+
 }
 
 object Block {

@@ -9,7 +9,7 @@ object BlockdagPrettyPrinter {
   val indentAtom: String = "  "
 
   def print(dag: DoublyLinkedDag[Block]): String = {
-    val genesis = findGenesis(dag)
+    val genesis = findGenesisBelow(dag, dag.tips.head)
     val canvas = new StringBuilder(1000)
     var vertexCounter: Int = 0
     val visited: mutable.Map[Block, Int] = new mutable.HashMap[Block, Int]
@@ -34,8 +34,6 @@ object BlockdagPrettyPrinter {
     printSubtree(genesis, 0)
     return canvas.toString()
   }
-
-  private def findGenesis(dag: DoublyLinkedDag[Block]): Block = dag.tips.head
 
   private def findGenesisBelow(dag: DoublyLinkedDag[Block], vertex: Block): Block = {
     val targets = dag.targets(vertex)

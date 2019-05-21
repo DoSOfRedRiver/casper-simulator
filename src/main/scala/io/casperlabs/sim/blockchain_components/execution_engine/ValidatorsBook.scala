@@ -215,15 +215,15 @@ class ValidatorsBook private (
   def numberOfValidators: Int = cachedNumberOfActiveValidators
 
   /**
-    * Stores per-validator info on the reward for the given block.
-    * Nothing is paid yet.
+    * Stores per-validator info on the reward for the given block. Nothing is paid yet.
     *
-    * Longer story: when a new block is created, the ether paid as transaction fees in this block is the total reward to be eventually paid
-    * to validators. This total reward is distributed across active validators according to an algorithm that part of PoS semantics.
+    * Longer story: when a new block is created, the cumulative ether paid as transaction fees for transactions in this block
+    * makes a "reward" to be eventually distributed to validators. This reward is distributed across active validators according
+    * to the algorithm that is part of PoS semantics.
     */
   def distributeRewardsForJustCreatedBlock(blockId: AbstractBlock.PseudoId, creator: ValidatorId, blockTime: Gas, totalReward: Ether): ValidatorsBook = {
     assert(blockTime >= lastPTimeSeen)
-    assert(!blocksRewardEscrow.contains(blockId))
+    assert(! blocksRewardEscrow.contains(blockId))
 
     val updatedMapOfValidators: Map[ValidatorId, ValidatorState] = validators map {
       case (id, state) =>
