@@ -1,5 +1,6 @@
 package io.casperlabs.sim.data_generators
 
+import io.casperlabs.sim.abstract_blockchain.ValidatorId
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
 import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Ether, Transaction}
 import io.casperlabs.sim.blockchain_components.hashing.FakeSha256Digester
@@ -21,27 +22,34 @@ class TransactionsGenerator[P, MS, CS <: ComputingSpace[P, MS]](
                                                                  gasPriceInterval: (Ether, Ether),
                                                                  computingSpaceProgramsGenerator: ProgramsGenerator[P, MS, CS],
                                                                  startingIdForNewAccounts: Int,
-                                                                 preExistingAccounts: Map[Account, Ether]
+                                                                 preExistingAccounts: Map[Account, Ether],
+                                                                 genesisActiveValidators: Map[ValidatorId, Account],
+                                                                 genesisPassiveValidators: Map[ValidatorId, Account],
+                                                                 allowedBondingRange: (Ether, Ether),
+                                                                 allowedUnbondingRange: (Ether, Ether)
                                                                ) {
 
   val transactionTypeSelector = new RandomSelector[String](
     random,
     freqMap = Map(
-      "account-creation" -> 1,
+      "account-creation" -> 2,
       "ether-transfer" -> 200,
       "smart-contract-exec" -> 300
+//      "initial-bonding" -> 1
     ),
   )
 
-  val accountBalances: mutable.Map[Account, Ether] = new mutable.HashMap[Account, Ether]()
+  val accountBalances: mutable.Map[Account, Ether] = new mutable.HashMap[Account, Ether]() //todo: fix updating account balances
   accountBalances ++= preExistingAccounts
   val accountNonces: mutable.Map[Account, Long] = new mutable.HashMap[Account, Long]()
   accountNonces ++= preExistingAccounts.mapValues(x => 0)
   var lastAccountId: Int = startingIdForNewAccounts
   val gasPriceGenerator = new PseudoGaussianSelectionFromLongInterval(random, gasPriceInterval)
   val transactionHashGenerator = new FakeSha256Digester(random)
+  val activeValidators: mutable.Map[ValidatorId, Account] = new mutable.HashMap[Account, ValidatorId] ++= genesisActiveValidators
+  val passiveValidators: mutable.Map[ValidatorId, Account] = new mutable.HashMap[Account, ValidatorId] ++= genesisPassiveValidators
 
-  def createTransaction(): Transaction = {
+  def createTransaction(): Option[Transaction] = {
     val txHash = transactionHashGenerator.generateHash()
 
     transactionTypeSelector.next() match {
@@ -51,18 +59,35 @@ class TransactionsGenerator[P, MS, CS <: ComputingSpace[P, MS]](
         accountBalances.put(newAccount, 0L)
         accountNonces.put(newAccount, 0L)
         val sponsor: Account = pickRandomAccount
-        return Transaction.AccountCreation(txHash, takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit = 100, newAccount)
+        return Some(Transaction.AccountCreation(txHash, takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit = 100, newAccount))
 
       case "ether-transfer" =>
         val sourceAccount = pickRandomAccountWithNonzeroBalance
         val targetAccount = pickRandomAccountAvoiding(sourceAccount)
         val amount: Ether = (accountBalances(sourceAccount) * random.nextDouble()).toLong + 1
-        return Transaction.EtherTransfer(txHash, takeNonceFor(sourceAccount), sourceAccount, gasPriceGenerator.next(), gasLimit = 100, targetAccount, amount)
+        accountBalances(sourceAccount) -= amount
+        accountBalances(sourceAccount) += amount
+        return Some(Transaction.EtherTransfer(txHash, takeNonceFor(sourceAccount), sourceAccount, gasPriceGenerator.next(), gasLimit = 100, targetAccount, amount))
 
       case "smart-contract-exec" =>
         val sponsor: Account = pickRandomAccount
         val (program, gasLimit) = computingSpaceProgramsGenerator.next()
-        return Transaction.SmartContractExecution(txHash, takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit, program)
+        return Some(Transaction.SmartContractExecution(txHash, takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit, program))
+
+//      case "initial-bonding" =>
+//        if (passiveValidators.nonEmpty) {
+//          val vid: ValidatorId = pickRandomPassiveValidator
+//          val sponsor: Account = passiveValidators(vid)
+//          return Some(Transaction.Bonding(txHash, takeNonceFor(sponsor), sponsor, gasPriceGenerator.next(), gasLimit = 200, vid, allowedBondingRange._1 + random.nextInt(200)))
+//        } else
+//          return None
+
+//      case "bonding" =>
+//        //todo: fix this when the finalized blocks data stream is available
+//
+//      case "unbonding" =>
+//        //todo
+
     }
   }
 
@@ -74,6 +99,16 @@ class TransactionsGenerator[P, MS, CS <: ComputingSpace[P, MS]](
 
   def pickRandomAccount: Account = {
     val currentSnapshot = accountBalances.keys.toSeq
+    return currentSnapshot(random.nextInt(currentSnapshot.length))
+  }
+
+  def pickRandomActiveValidator: ValidatorId = {
+    val currentSnapshot = activeValidators.keys.toSeq
+    return currentSnapshot(random.nextInt(currentSnapshot.length))
+  }
+
+  def pickRandomPassiveValidator: ValidatorId = {
+    val currentSnapshot = passiveValidators.keys.toSeq
     return currentSnapshot(random.nextInt(currentSnapshot.length))
   }
 

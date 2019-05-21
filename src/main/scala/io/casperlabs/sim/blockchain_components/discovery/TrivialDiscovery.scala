@@ -16,6 +16,10 @@ class TrivialDiscovery(val selfNodeId: NodeId, addressMap: Map[NodeId, String]) 
     //do nothing
   }
 
+  override def shutdown(): Unit = {
+    //do nothing
+  }
+
   def onExternalEvent(msg: Any): Boolean = {
     //do nothing; leave message unconsumed
     return false

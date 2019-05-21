@@ -26,9 +26,10 @@ import scala.util.Random
 object MainchainPOC {
 
   def main(args: Array[String]): Unit = {
-    if (args.length != 5) {
+    if (args.length != 6) {
       println(s"Expected are exactly 5 command-line arguments:")
-      println(s"    number of validators [integer]")
+      println(s"    number of nodes [integer]")
+      println(s"    number of validators bonded at genesis [integer]")
       println(s"    simulation length time unit [enumeration: sec, min, hou, day]")
       println(s"    simulation length [integer]")
       println(s"    client-side average traffic [deploys per second]")
@@ -37,15 +38,15 @@ object MainchainPOC {
     }
 
     val numberOfValidators = args(0).toInt
-    val numberOfValidatorsBondedAtGenesis = numberOfValidators
-    val simulationEnd = args(1) match {
-      case "sec" => Timepoint.seconds(args(2).toLong)
-      case "min" => Timepoint.minutes(args(2).toLong)
-      case "hou" => Timepoint.hours(args(2).toLong)
-      case "day" => Timepoint.days(args(2).toLong)
+    val numberOfValidatorsBondedAtGenesis = args(1).toInt
+    val simulationEnd = args(2) match {
+      case "sec" => Timepoint.seconds(args(3).toLong)
+      case "min" => Timepoint.minutes(args(3).toLong)
+      case "hou" => Timepoint.hours(args(3).toLong)
+      case "day" => Timepoint.days(args(3).toLong)
     }
-    val clientTraffic = args(3).toInt
-    val loggingLevel = args(4)
+    val clientTraffic = args(4).toInt
+    val loggingLevel = args(5)
 
     this.setLoggingLevel(loggingLevel)
     this.launchSimulation(numberOfValidators, numberOfValidatorsBondedAtGenesis, simulationEnd, clientTraffic)
@@ -63,7 +64,7 @@ object MainchainPOC {
 
   //###########################################################################################
 
-  val networkDelayMinMillisecondsInterval: (Int,Int) = (100, 30000)
+  val networkDelayMinMillisecondsInterval: (Int,Int) = (100, 10000)
 
   //###################################### BLOCKCHAIN CONFIG ##################################
 
@@ -127,8 +128,8 @@ object MainchainPOC {
     val mapOfGenesisAccounts = accountIds.map(a => (a, AccountState(0, initialEtherPerGenesisValidator))).toMap
     val accountsRegistry = new AccountsRegistry(mapOfGenesisAccounts)
 
-    val mapOfGenesisValidators =
-      for {
+    val mapOfGenesisValidators: Map[ValidatorId, ValidatorState] =
+      (for {
         i <- 0 until numberOfValidatorsBondedAtGenesis
         state =
           if (i <= numberOfValidatorsBondedAtGenesis)
@@ -137,6 +138,7 @@ object MainchainPOC {
             ValidatorState.initial(validators(i), accountIds(i), stake = 0)
       }
         yield validators(i) -> state
+        ).toMap
 
     val validatorsBook = ValidatorsBook.genesis(mapOfGenesisValidators.toMap)
     val genesisGlobalState = GlobalState(initialMemoryState, accountsRegistry, validatorsBook)
@@ -170,12 +172,19 @@ object MainchainPOC {
       gasLimitToProgramSizeFactor = 2.0
     )
 
+    val activeValidators: Map[ValidatorId, ValidatorState] = mapOfGenesisValidators filter {case (vid,state) => state.stake > 0}
+    val passiveValidators: Map[ValidatorId, ValidatorState] = mapOfGenesisValidators filter {case (vid,state) => state.stake == 0L}
+
     val transactionsGenerator = new TransactionsGenerator(
       sharedSourceOfRandomness,
       gasPriceInterval = (10, 50),
       computingSpaceProgramsGenerator = programsGenerator,
       startingIdForNewAccounts = 1000,
-      mapOfGenesisAccounts.mapValues(state => state.balance)
+      mapOfGenesisAccounts.mapValues(state => state.balance),
+      genesisActiveValidators = activeValidators.mapValues(state => state.account),
+      genesisPassiveValidators = passiveValidators.mapValues(state => state.account),
+      allowedBondingRange = (blockchainConfig.minBondingUnbondingRequest, blockchainConfig.maxBondingRequest),
+      allowedUnbondingRange = (blockchainConfig.minBondingUnbondingRequest, blockchainConfig.maxUnbondingRequest)
     )
 
     //################################### SIMULATION #############################################################

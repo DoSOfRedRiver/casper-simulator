@@ -67,8 +67,10 @@ case class NormalBlock(
   override lazy val toString: String = {
     val js = justifications.map(_.shortId).mkString(",")
     val ps = parents.map(_.shortId).mkString(",")
-    s"block-${this.shortId}[creator=$creator ptime=$pTime daglevel=$dagLevel j=($js) p=($ps) gas=$gasBurned #tx=${transactions.size}]"
+    s"block-${this.shortId}[creator=$creator pos=$positionInPerValidatorChain ptime=$pTime daglevel=$dagLevel j=($js) p=($ps) gas=$gasBurned #tx=${transactions.size} #err=${this.errorsCount}]"
   }
+
+  def errorsCount: Int = executionResults.count(r => ! r.isInstanceOf[TransactionExecutionResult.Success])
 
 }
 

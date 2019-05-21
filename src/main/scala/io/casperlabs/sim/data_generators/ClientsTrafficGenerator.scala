@@ -2,7 +2,7 @@ package io.casperlabs.sim.data_generators
 
 import io.casperlabs.sim.abstract_blockchain.{NodeId, ScheduledDeploy}
 import io.casperlabs.sim.blockchain_components.computing_spaces.ComputingSpace
-import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Ether}
+import io.casperlabs.sim.blockchain_components.execution_engine.{Account, Ether, Transaction}
 import io.casperlabs.sim.simulation_framework.{AgentRef, Timepoint}
 
 import scala.util.Random
@@ -29,8 +29,12 @@ class ClientsTrafficGenerator[P, MS, CS <: ComputingSpace[P, MS]](
   def next(): ScheduledDeploy = {
     val targetNode = nodes(random.nextInt(nodes.length)) //todo: use 'trafficPerNode' here
     val when = nextPoissonTimepoint()
-    val transaction = transactionsGenerator.createTransaction()
-    return ScheduledDeploy(eventIdGenerator.next(), transaction, when, targetNode)
+    var transaction: Option[Transaction] = None
+    while (transaction.isEmpty) {
+      transaction = transactionsGenerator.createTransaction()
+    }
+
+    return ScheduledDeploy(eventIdGenerator.next(), transaction.get, when, targetNode)
   }
 
   def nextPoissonTimepoint(): Timepoint = {

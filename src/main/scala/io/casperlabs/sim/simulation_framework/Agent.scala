@@ -36,6 +36,11 @@ trait Agent[+R] {
   def onStartup(time: Timepoint): MsgHandlingResult[R]
 
   /**
+    * Called by the engine upon termination of the sim.
+    */
+  def onSimulationEnd(time: Timepoint): MsgHandlingResult[R]
+
+  /**
     * Handler of incoming agent-to-agent messages.
     */
   def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): MsgHandlingResult[R]

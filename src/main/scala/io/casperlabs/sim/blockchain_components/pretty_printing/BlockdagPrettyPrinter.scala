@@ -6,7 +6,7 @@ import io.casperlabs.sim.blockchain_models.casperlabs_classic.Block
 import scala.collection.mutable
 
 object BlockdagPrettyPrinter {
-  val indentAtom: String = "  "
+  val indentAtom: String = ". "
 
   def print(dag: DoublyLinkedDag[Block]): String = {
     val genesis = findGenesisBelow(dag, dag.tips.head)
@@ -24,7 +24,7 @@ object BlockdagPrettyPrinter {
           vertexCounter += 1
           visited += vertex -> vertexCounter
           canvas.append(s"[$vertexCounter]")
-          canvas.append(vertex.shortId)
+          canvas.append(vertex.toString)
           canvas.append("\n")
           for (child <- dag.sources(vertex))
             printSubtree(child, level+1)

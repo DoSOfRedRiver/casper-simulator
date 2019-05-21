@@ -21,6 +21,10 @@ class NaiveGossip[Nid](val discovery: Discovery[Nid, AgentRef]) extends Gossip[N
     //do nothing
   }
 
+  override def shutdown(): Unit = {
+    //do nothing
+  }
+
   override def onExternalEvent(msg: Any): Boolean = {
     //do nothing; leave message unconsumed
     return false

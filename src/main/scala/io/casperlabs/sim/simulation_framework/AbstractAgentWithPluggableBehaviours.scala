@@ -68,6 +68,13 @@ abstract class AbstractAgentWithPluggableBehaviours[R](val label: String, plugin
     return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil) //todo: provide support for recording, i.e. replace Nil with actual items to be recorded
   }
 
+  override def onSimulationEnd(time: Timepoint): Agent.MsgHandlingResult[R] = {
+    arrivalTimeOfCurrentEvent = time
+    for (p <- plugins)
+      p.shutdown()
+    return Agent.MsgHandlingResult(outgoingMessagesContainer, Nil) //todo: provide support for recording, i.e. replace Nil with actual items to be recorded
+  }
+
   override final def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): Agent.MsgHandlingResult[R] =
     handleEvent(msg.scheduledDeliveryTime, msg.source){
       p => p.receive(msg.source, msg.payload)

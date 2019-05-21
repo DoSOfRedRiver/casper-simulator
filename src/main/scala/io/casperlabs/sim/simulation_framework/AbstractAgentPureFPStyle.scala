@@ -48,6 +48,8 @@ abstract class AbstractAgentPureFPStyle[State, R](val label: String, val initial
     Agent.MsgHandlingResult(messages, Nil)
   }
 
+  override def onSimulationEnd(time: Timepoint): Agent.MsgHandlingResult[R] = ??? //todo
+
   /**
     * Handler of incoming agent-to-agent messages.
     */

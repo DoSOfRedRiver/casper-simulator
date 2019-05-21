@@ -2,7 +2,7 @@ package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
 import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, BlocksExecutor, NodeId, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.{BinaryArraySpace, ComputingSpace}
-import io.casperlabs.sim.blockchain_components.execution_engine.{DefaultExecutionEngine, Gas, GlobalState, Transaction}
+import io.casperlabs.sim.blockchain_components.execution_engine._
 import io.casperlabs.sim.blockchain_components.gossip.Gossip
 import io.casperlabs.sim.blockchain_components.graphs.DoublyLinkedDag.InsertResult
 import io.casperlabs.sim.blockchain_components.graphs.{DoublyLinkedDag, IndexedTwoArgRelation}
@@ -12,7 +12,6 @@ import io.casperlabs.sim.blockchain_models.casperlabs_classic.Validator.{AddBloc
 import io.casperlabs.sim.simulation_framework._
 import org.slf4j.LoggerFactory
 
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 /**
@@ -49,7 +48,8 @@ class Validator(
 
   //buffer of blocks we failed to integrate with local blockdag because of missing justifications
   //this is represented as 2-arg relation; entry (a,b) in this relation means "block a is missing a justification b"
-  private val blockBuffer: IndexedTwoArgRelation[NormalBlock,NormalBlock] = new IndexedTwoArgRelation[NormalBlock,NormalBlock]
+  //hence blockBuffer.sources is the collection of blocks that are waiting (received but not yet integrated into the local blockdag)
+  private val blocksBuffer: IndexedTwoArgRelation[NormalBlock,NormalBlock] = new IndexedTwoArgRelation[NormalBlock,NormalBlock]
 
   // TODO: share DAG structure among nodes
   //parent-child dag
@@ -73,12 +73,28 @@ class Validator(
   //blocks executor in use //todo: make this configurable ?
   private val blocksExecutor = new CasperMainchainBlocksExecutor[CS, P, MS](executionEngine, blockchainConfig)
 
+  //basic statistics we maintain just in case they are needed (regardless of any more sophisticated stats done via external data science tooling)
+  private val stats = new ValidatorStats
+
 //###################################### PLUGIN CALLBACKS ########################################
 
   override def startup(): Unit = {
     log.info(s"${context.timeOfCurrentEvent}: startup of ${context.selfLabel}")
     globalStatesStorage.store(genesisGlobalState)
     thisAgent.setTimerEvent(proposeDelay, ProposeTik)
+  }
+
+  override def shutdown(): Unit = {
+    log.info(s"${context.timeOfCurrentEvent}: ################# shutdown of ${context.selfLabel} #################")
+    log.info(s"    blocks received: ${stats.numberOfBlocksReceived}")
+    log.info(s"    blocks published: ${stats.numberOfBlocksPublished}")
+    log.info(s"    transactions processed (successful): ${stats.numberOfSuccessfulTransactionsProcessed}")
+    log.info(s"    transactions processed (errors): ${stats.numberOfFailedTransactionsProcessed}")
+    log.info(s"    deploys published: ${stats.numberOfDeploysPublished}")
+    log.info(s"    deploys discarded for fatal errors: ${stats.numberOfDeploysDiscardedForFatalErrors}")
+    log.info(s"    pDag depth: ${stats.pDagLevel}")
+    log.info(s"    blocks waiting in the buffer: ${blocksBuffer.sources.size}")
+    log.info(s"    deploys waiting in the buffer: ${deployBuffer.size}")
   }
 
   override def onExternalEvent(msg: Any): Boolean =
@@ -110,9 +126,11 @@ class Validator(
 
   private def handleIncomingBlock(block: NormalBlock): Unit = {
     if (log.isTraceEnabled) {
-      val blocksBufferDump = if (blockBuffer.isEmpty) "[empty]" else "\n" + BlocksBufferPrettyPrinter.print(blockBuffer)
+      val blocksBufferDump = if (blocksBuffer.isEmpty) "[empty]" else "\n" + BlocksBufferPrettyPrinter.print(blocksBuffer)
       log.trace(s"${context.timeOfCurrentEvent}: received block $block, current blocks buffer is: $blocksBufferDump")
     }
+
+    stats.blockReceived(block)
 
     validateIncomingBlockAndAttemptAddingItToLocalBlockdag(block) match {
       case AddBlockResult.AlreadyAdded =>
@@ -121,9 +139,9 @@ class Validator(
 
       case AddBlockResult.MissingJustifications(justifications) =>
         for (j <- justifications)
-          blockBuffer.addPair(block, j.asInstanceOf[NormalBlock]) //this casting is legal because Genesis block is always present (hence cannot be missing and registered as missing dependency)
+          blocksBuffer.addPair(block, j.asInstanceOf[NormalBlock]) //this casting is legal because Genesis block is always present (hence cannot be missing and registered as missing dependency)
         //todo: add block buffer purging here (if a block stays in the buffer for too long, it should be discarded because we assume it must be a side-effect of hacking attempt)
-        log.trace(s"incoming block case: missing justifications: ${justifications.map(_.shortId).mkString(",")}, updated blocks buffer to: \n${BlocksBufferPrettyPrinter.print(blockBuffer)}")
+        log.trace(s"incoming block case: missing justifications: ${justifications.map(_.shortId).mkString(",")}, updated blocks buffer to: \n${BlocksBufferPrettyPrinter.print(blocksBuffer)}")
 
       case AddBlockResult.Invalid =>
         // Something is wrong with the block.
@@ -138,16 +156,16 @@ class Validator(
         log.trace("incoming block case: valid")
 
         //possibly this new block unlocked some other blocks in the blocks buffer
-        val blocksWaitingForThisOne = blockBuffer.findSourcesFor(block)
-        blockBuffer.removeTarget(block)
+        val blocksWaitingForThisOne = blocksBuffer.findSourcesFor(block)
+        blocksBuffer.removeTarget(block)
         if (blocksWaitingForThisOne.nonEmpty) {
           for (a <- blocksWaitingForThisOne)
-            if (!blockBuffer.hasSource(a))
+            if (!blocksBuffer.hasSource(a))
               this.validateIncomingBlockAndAttemptAddingItToLocalBlockdag(a) //we are not checking the result because this time is must be a success //todo: add assertion here ?
         }
 
         log.trace(s"final pDag: \n${BlockdagPrettyPrinter.print(pDag)}")
-        log.trace(s"final blocks buffer: \n:${BlocksBufferPrettyPrinter.print(blockBuffer)}")
+        log.trace(s"final blocks buffer: \n:${BlocksBufferPrettyPrinter.print(blocksBuffer)}")
     }
 
   }
@@ -262,10 +280,12 @@ class Validator(
       transactions)
 
     //transactions with fatal errors are not included in the new block; before throwing them away we do some logging
+    val discardedTransactions: Map[Transaction, TransactionExecutionResult] = blockCreationResult.txExecutionResults filter {case (tx, txStatus) => txStatus.isFatal}
     if (log.isDebugEnabled) {
-      for ((txHash, txStatus) <- blockCreationResult.txExecutionResults if txStatus.isFatal)
-        log.debug(s"${context.timeOfCurrentEvent}: discarding transaction $txHash - fatal error during execution against global state $preStateHash, error = $txStatus")
+      for ((tx, txStatus) <- discardedTransactions)
+        log.debug(s"${context.timeOfCurrentEvent}: discarding transaction ${tx.id} - fatal error during execution against global state $preStateHash, error = $txStatus")
     }
+    stats.deploysDiscarded(discardedTransactions.keys)
 
     //if the resulting block contains no transactions (= all transactions were discarded due to fatal errors), we discard the whole block
     if (blockCreationResult.block.transactions.isEmpty) {
@@ -305,6 +325,9 @@ class Validator(
 
     //storing local pointer to my latest block
     myOwnLatestBlock = Some(blockCreationResult.block)
+
+    //updating stats
+    stats.blockPublished(blockCreationResult.block)
   }
 
 }

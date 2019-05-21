@@ -35,10 +35,17 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
                       agentsCreationStream: AgentsCreationStream[R]
                     ): Unit = {
     log.debug("starting simulation")
-
     queue.plugInAgentsCreationStream(agentsCreationStream)
     queue.plugInExternalEventsStream(externalEventsGenerator)
+    this.mainLoop()
 
+    for (agent <- agentsRegistry.values)
+      agent.onSimulationEnd(clock)
+
+    log.debug("simulation ended successfully")
+  }
+
+  private def mainLoop(): Unit = {
     while (clock <= simulationEnd) {
       queue.dequeue() match {
         case None =>
@@ -77,11 +84,9 @@ class SimulationImpl[R](simulationEnd: Timepoint, networkBehavior: NetworkBehavi
           }
       }
     }
-
-    log.debug("simulation ended successfully")
   }
 
-  def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult[R]): Unit = {
+  private def applyEventProcessingResultToSimState(processingAgentId: AgentRef, processingResult: MsgHandlingResult[R]): Unit = {
     if (processingResult.outgoingMessages.nonEmpty)
       log.debug(s"$clock: appending to queue: \n    ${processingResult.outgoingMessages.mkString("\n    ")}")
     for (item <- processingResult.outgoingMessages.reverse) {

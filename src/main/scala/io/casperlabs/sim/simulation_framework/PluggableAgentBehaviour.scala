@@ -60,6 +60,8 @@ trait PluggableAgentBehaviour {
 
   def startup(): Unit
 
+  def shutdown(): Unit
+
   def onExternalEvent(msg: Any): Boolean
 
   def onTimer(msg: Any): Boolean
