@@ -13,18 +13,23 @@ class ValidatorStats {
   private var cNumberOfDeploysPublished = 0
   private var cNumberOfDeploysDiscardedForFatalErrors = 0
   private var cPDagLevel: Long = 0
+  private var cMaxBufferSize: Int = 0
 
-  def blockReceived(block: NormalBlock): Unit = {
+  def blockWasReceived(block: NormalBlock): Unit = {
     cNumberOfBlocksReceived += 1
     this.updateTransactionCounters(block)
     this.updateDagLevel(block)
   }
 
-  def blockPublished(block: NormalBlock): Unit = {
+  def blockWasPublished(block: NormalBlock): Unit = {
     cNumberOfBlocksPublished += 1
     this.updateTransactionCounters(block)
     this.updateDagLevel(block)
     cNumberOfDeploysPublished += block.transactions.size
+  }
+
+  def blocksBufferSizeIs(n: Int): Unit = {
+    cMaxBufferSize = math.max(n, cMaxBufferSize)
   }
 
   def deploysDiscarded(deploys: Iterable[Transaction]): Unit = {
@@ -44,6 +49,8 @@ class ValidatorStats {
   def numberOfDeploysDiscardedForFatalErrors: Long = cNumberOfDeploysDiscardedForFatalErrors
 
   def pDagLevel: Long = cPDagLevel
+
+  def maxNumberOfBlocksInTheWaitingBuffer = cMaxBufferSize
 
   private def updateTransactionCounters(block: NormalBlock): Unit = {
     for (tx <- block.executionResults) {

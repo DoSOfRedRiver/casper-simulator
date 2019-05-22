@@ -68,6 +68,9 @@ class IndexedTwoArgRelation[A,B] {
 
   def targets: Iterable[B] = ba.keys
 
+  /**
+    * Number of pairs in the relation.
+    */
   def size: Int = ab.map(entry => entry._2.size).sum
 
   def isEmpty: Boolean = ab.isEmpty

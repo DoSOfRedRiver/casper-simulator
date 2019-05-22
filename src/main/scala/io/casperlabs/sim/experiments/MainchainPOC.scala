@@ -64,13 +64,13 @@ object MainchainPOC {
 
   //###########################################################################################
 
-  val networkDelayMinMillisecondsInterval: (Int,Int) = (100, 10000)
+  val networkDelayMinMillisecondsInterval: (Int,Int) = (200, 30000)
 
   //###################################### BLOCKCHAIN CONFIG ##################################
 
   val initialEtherPerGenesisValidator: Ether = 1000 * 1000
   val initialStakePerGenesisValidator: Ether = 1000
-  val blockProposeDelayInSecondsInterval: (Int,Int) = (10, 30)
+  val blockProposeDelayInSecondsInterval: (Int,Int) = (5, 15)
 
   val blockchainConfig: BlockchainConfig = new BlockchainConfig {
 

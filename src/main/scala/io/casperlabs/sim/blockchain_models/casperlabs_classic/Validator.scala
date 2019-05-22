@@ -93,7 +93,8 @@ class Validator(
     log.info(s"    deploys published: ${stats.numberOfDeploysPublished}")
     log.info(s"    deploys discarded for fatal errors: ${stats.numberOfDeploysDiscardedForFatalErrors}")
     log.info(s"    pDag depth: ${stats.pDagLevel}")
-    log.info(s"    blocks waiting in the buffer: ${blocksBuffer.sources.size}")
+    log.info(s"    blocks currently waiting in the buffer: ${blocksBuffer.sources.size}")
+    log.info(s"    max number of blocks waiting in the buffer: ${stats.maxNumberOfBlocksInTheWaitingBuffer}")
     log.info(s"    deploys waiting in the buffer: ${deployBuffer.size}")
   }
 
@@ -127,10 +128,11 @@ class Validator(
   private def handleIncomingBlock(block: NormalBlock): Unit = {
     if (log.isTraceEnabled) {
       val blocksBufferDump = if (blocksBuffer.isEmpty) "[empty]" else "\n" + BlocksBufferPrettyPrinter.print(blocksBuffer)
-      log.trace(s"${context.timeOfCurrentEvent}: received block $block, current blocks buffer is: $blocksBufferDump")
+      log.trace(s"${context.timeOfCurrentEvent}: received block $block, current blocks buffer: \n$blocksBufferDump")
+      log.trace(s"${context.timeOfCurrentEvent}: current p-DAG: \n${BlockdagPrettyPrinter.print(pDag)} ")
     }
 
-    stats.blockReceived(block)
+    stats.blockWasReceived(block)
 
     validateIncomingBlockAndAttemptAddingItToLocalBlockdag(block) match {
       case AddBlockResult.AlreadyAdded =>
@@ -147,7 +149,7 @@ class Validator(
         // Something is wrong with the block.
         // No new messages need to be sent.
         // TODO: slashing
-        log.trace("incoming block case: invalid")
+        log.warn(s"received block recognized as invalid: $block")
 
       case AddBlockResult.Valid =>
         // Block is valid, gossip to others
@@ -155,19 +157,26 @@ class Validator(
         //gossipService.gossip(Node.Comm.NewBlock(b))
         log.trace("incoming block case: valid")
 
-        //possibly this new block unlocked some other blocks in the blocks buffer
-        val blocksWaitingForThisOne = blocksBuffer.findSourcesFor(block)
-        blocksBuffer.removeTarget(block)
-        if (blocksWaitingForThisOne.nonEmpty) {
-          for (a <- blocksWaitingForThisOne)
-            if (!blocksBuffer.hasSource(a))
-              this.validateIncomingBlockAndAttemptAddingItToLocalBlockdag(a) //we are not checking the result because this time is must be a success //todo: add assertion here ?
-        }
-
+        //possibly this new block unlocked some other blocks in the blocks buffer, which we now can add to the blockdag as well
+        //this phenomenon causes possibly a whole collection of blocks being added in a "cascaded" process
+        this.runBufferUnlockingCascadeFor(block)
         log.trace(s"final pDag: \n${BlockdagPrettyPrinter.print(pDag)}")
-        log.trace(s"final blocks buffer: \n:${BlocksBufferPrettyPrinter.print(blocksBuffer)}")
     }
 
+    log.trace(s"final blocks buffer: \n${BlocksBufferPrettyPrinter.print(blocksBuffer)}")
+    stats.blocksBufferSizeIs(blocksBuffer.sources.size)
+  }
+
+  //one block arriving may unlock other block received previously, that were waiting for missing justifications
+  //this leads to cascaded "unlocking" process, we have to run in a loop until no more unlocking is possible
+  private def runBufferUnlockingCascadeFor(blockJustAddedToTheLocalBlockdag: NormalBlock): Unit = {
+    val blocksWaitingForThisJustification = blocksBuffer.findSourcesFor(blockJustAddedToTheLocalBlockdag)
+    blocksBuffer.removeTarget(blockJustAddedToTheLocalBlockdag)
+    for (block <- blocksWaitingForThisJustification if ! blocksBuffer.hasSource(block)) {
+      val result = this.validateIncomingBlockAndAttemptAddingItToLocalBlockdag(block)
+      assert (result == AddBlockResult.Valid) //must be valid because we already added all justifications to the blockdag
+      runBufferUnlockingCascadeFor(block)
+    }
   }
 
   private def validateIncomingBlockAndAttemptAddingItToLocalBlockdag(b: NormalBlock): AddBlockResult =
@@ -327,7 +336,7 @@ class Validator(
     myOwnLatestBlock = Some(blockCreationResult.block)
 
     //updating stats
-    stats.blockPublished(blockCreationResult.block)
+    stats.blockWasPublished(blockCreationResult.block)
   }
 
 }
