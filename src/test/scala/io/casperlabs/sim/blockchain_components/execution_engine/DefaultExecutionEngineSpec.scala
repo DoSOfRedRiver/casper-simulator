@@ -163,19 +163,21 @@ class DefaultExecutionEngineSpec extends BaseSpec {
     txResult1 shouldBe a [TransactionExecutionResult.GasLimitNotCoveredBySponsorAccountBalance]
   }
 
-  it must "refuse smart contract execution because of nonce mismatch" in {
-    val tx = Transaction.SmartContractExecution(
-      transactionHashGenerator.generateHash(),
-      nonce = 1,
-      sponsor = account1,
-      gasPrice = 1,
-      gasLimit = 50,
-      MockingSpace.Program.Happy(10)
-    )
+//todo: re-enable this test once nonce checking is again enabled
 
-    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
-    txResult1 shouldBe a [TransactionExecutionResult.NonceMismatch]
-  }
+//  it must "refuse smart contract execution because of nonce mismatch" in {
+//    val tx = Transaction.SmartContractExecution(
+//      transactionHashGenerator.generateHash(),
+//      nonce = 1,
+//      sponsor = account1,
+//      gasPrice = 1,
+//      gasLimit = 50,
+//      MockingSpace.Program.Happy(10)
+//    )
+//
+//    val (gs1, txResult1) = ee.executeTransaction(initialGlobalState, tx, effectiveGasPrice = 1, blockTime = 0)
+//    txResult1 shouldBe a [TransactionExecutionResult.NonceMismatch]
+//  }
 
   it must "execute adding to bonding queue (successful case)" in {
     val tx = Transaction.Bonding(
@@ -219,7 +221,7 @@ class DefaultExecutionEngineSpec extends BaseSpec {
       sponsor = account1,
       gasPrice = 1,
       gasLimit = 200,
-      targetAccount = account4,
+      targetAccount = account3,
       value = 1001
     )
 
