@@ -130,7 +130,7 @@ object MainchainPOC {
 
     val mapOfGenesisValidators: Map[ValidatorId, ValidatorState] =
       (for {
-        i <- 0 until numberOfValidatorsBondedAtGenesis
+        i <- 0 until numberOfValidators
         state =
           if (i <= numberOfValidatorsBondedAtGenesis)
             ValidatorState.initial(validators(i), accountIds(i), initialStakePerGenesisValidator)
