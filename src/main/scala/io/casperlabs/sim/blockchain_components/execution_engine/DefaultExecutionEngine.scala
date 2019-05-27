@@ -16,7 +16,6 @@ import io.casperlabs.sim.blockchain_components.hashing.{CryptographicDigester, H
   * 5. User accounts.
   *
   * @param config blockchain parameters
-  * @tparam CS computing space type
   * @tparam P (computing space) programs type
   * @tparam MS (computing space) memory states type
   */
@@ -32,75 +31,51 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
     * @return a pair (resulting global state, execution status)
     */
   def executeTransaction(gs: GlobalState[MS], transaction: Transaction, effectiveGasPrice: Ether, blockTime: Gas): (GlobalState[MS], TransactionExecutionResult) = {
-    //should be checked earlier; if the check fails here then we apparently have a bug
-    assert(gs.accounts.contains(transaction.sponsor))
+    //fatal 1: sponsor account is not existing
+    if (! gs.accounts.contains(transaction.sponsor))
+      return (gs, TransactionExecutionResult.SponsorAccountUnknown(transaction.sponsor))
 
-    //nonce mismatch forces fail fast; no gas will be consumed from sponsor account
-    if (gs.accounts.getNonceOf(transaction.sponsor) != transaction.nonce)
-      return (gs, TransactionExecutionResult.NonceMismatch(gasBurned = 0, gs.accounts.getNonceOf(transaction.sponsor), transaction.nonce))
+    //fatal 2: nonce mismatch
+//todo: re-enable nonce mismatch checking after finalization is completed and ClientTrafficGenerator can use it to correctly generate nonces
 
-    //before executing the transaction we require that sponsor has enough ether to cover the maximum cost of transaction he declared to cover
+//    if (gs.accounts.getNonceOf(transaction.sponsor) != transaction.nonce)
+//      return (gs, TransactionExecutionResult.NonceMismatch(gs.accounts.getNonceOf(transaction.sponsor), transaction.nonce))
+
+    //fatal 3: sponsor does not have enough ether to cover declared gas limit
     if (gs.accountBalance(transaction.sponsor) < transaction.gasLimit * effectiveGasPrice)
-      return (gs, TransactionExecutionResult.GasLimitNotCoveredBySponsorAccountBalance(gasBurned = 0, transaction.gasLimit, transaction.gasLimit * transaction.gasPrice, gs.accountBalance(transaction.sponsor)))
+      return (gs, TransactionExecutionResult.GasLimitNotCoveredBySponsorAccountBalance(transaction.gasLimit, transaction.gasLimit * transaction.gasPrice, gs.accountBalance(transaction.sponsor)))
+
+    //no fatal error was detected
+    //it means that - whatever happens later - we anyway increase the nonce and we secure the money for the gas
+    val gsJustBeforeTransactionTypeSpecificPart = GlobalState[MS](
+      memoryState = gs.memoryState,
+      accounts = gs.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - transaction.gasLimit * effectiveGasPrice),
+      validatorsBook = gs.validatorsBook
+    )
 
     //here we execute the per-transaction-type specific part; caution: returned global state does not have transaction cost paid yet !
-    val (gsAfterTransactionExecution, txResult): (GlobalState[MS], TransactionExecutionResult) = transaction match {
-      case tx: Transaction.AccountCreation => this.executeAccountCreation(gs, tx)
-      case tx: Transaction.SmartContractExecution[P,MS] => this.executeSmartContract(gs, tx)
-      case tx: Transaction.EtherTransfer => this.executeEtherTransfer(gs, tx)
-      case tx: Transaction.Bonding => this.executeBonding(gs, tx, blockTime)
-      case tx: Transaction.Unbonding => this.executeUnbonding(gs, tx, blockTime)
-      case tx: Transaction.EquivocationSlashing => this.executeEquivocationSlashing(gs,tx)
+    val (gsJustAfterTransactionTypeSpecificPart, txResult): (GlobalState[MS], TransactionExecutionResult) = transaction match {
+      case tx: Transaction.AccountCreation => this.executeAccountCreation(gsJustBeforeTransactionTypeSpecificPart, tx)
+      case tx: Transaction.SmartContractExecution[P,MS] => this.executeSmartContract(gsJustBeforeTransactionTypeSpecificPart, tx)
+      case tx: Transaction.EtherTransfer => this.executeEtherTransfer(gsJustBeforeTransactionTypeSpecificPart, tx)
+      case tx: Transaction.Bonding => this.executeBonding(gsJustBeforeTransactionTypeSpecificPart, tx, blockTime)
+      case tx: Transaction.Unbonding => this.executeUnbonding(gsJustBeforeTransactionTypeSpecificPart, tx, blockTime)
+      case tx: Transaction.EquivocationSlashing => this.executeEquivocationSlashing(gsJustBeforeTransactionTypeSpecificPart,tx)
     }
 
     //if gas limit was exceeded, we ignore any other possible error
-    if (txResult.gasBurned > transaction.gasLimit) {
-      val updatedGS = GlobalState[MS](
-        memoryState = gs.memoryState,
-        accounts = gs.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - transaction.gasLimit * effectiveGasPrice),
-        validatorsBook = gs.validatorsBook
-      )
-      return (updatedGS, TransactionExecutionResult.GasLimitExceeded(transaction.gasLimit))
+    if (txResult.gasBurned > transaction.gasLimit)
+      return (gsJustBeforeTransactionTypeSpecificPart, TransactionExecutionResult.GasLimitExceeded(transaction.gasLimit))
+
+    //changes to the global state are retained only for successful transactions
+    val effectiveGlobalState = txResult match {
+      case TransactionExecutionResult.Success(_) => gsJustAfterTransactionTypeSpecificPart
+      case other => gsJustBeforeTransactionTypeSpecificPart
     }
 
-    txResult match {
-
-      case TransactionExecutionResult.Success(gasBurned) =>
-        //not enough ether left to cover transaction cost
-        val sponsorBalanceAfterTxExecution: Ether = gsAfterTransactionExecution.accountBalance(transaction.sponsor)
-        if (sponsorBalanceAfterTxExecution < gasBurned * effectiveGasPrice) {
-          val updatedGS = GlobalState[MS](
-            memoryState = gs.memoryState,
-            accounts = gs.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - gasBurned * effectiveGasPrice),
-            validatorsBook = gs.validatorsBook
-          )
-          return (updatedGS, TransactionExecutionResult.AccountBalanceLeftInsufficientForCoveringGasCostAfterTransactionWasExecuted(
-            gasBurned = transaction.gasLimit,
-            gasBurnedIfSuccessful = gasBurned,
-            gasCostIfSuccessful = gasBurned * effectiveGasPrice,
-            balanceOfSponsorAccountWhenGasCostFailedAttemptHappened = sponsorBalanceAfterTxExecution)
-          )
-        }
-
-        //everything looks good, this is a happy path
-        val updatedGS = GlobalState[MS](
-          memoryState = gsAfterTransactionExecution.memoryState,
-          accounts = gsAfterTransactionExecution.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - txResult.gasBurned * effectiveGasPrice),
-          validatorsBook = gsAfterTransactionExecution.validatorsBook
-        )
-        return (updatedGS, txResult)
-
-      case other =>
-        //transaction execution failed; we retain the original transaction result, only the gas cost must be taken from sponsor account
-        val updatedGS = GlobalState[MS](
-          memoryState = gs.memoryState,
-          accounts = gs.accounts.updateBalanceAndIncreaseNonce(transaction.sponsor, - other.gasBurned * effectiveGasPrice),
-          validatorsBook = gs.validatorsBook
-        )
-        return (updatedGS, other)
-
-    }
-
+    //we return money for whatever was unused (as compared to declared gas limit)
+    val resultGS = effectiveGlobalState.updateAccountBalance(transaction.sponsor, (transaction.gasLimit - txResult.gasBurned) * effectiveGasPrice)
+    return (resultGS, txResult)
   }
 
   /**
@@ -112,11 +87,13 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
   def globalStateHash(gs: GlobalState[MS]): Hash = {
     val digester = new RealSha256Digester
     computingSpace.updateDigestWithMemState(gs.memoryState, digester)
-    //todo: add processing of accounts and validators book
+    gs.validatorsBook.updateDigest(digester)
+    gs.accounts.updateDigest(digester)
     return digester.generateHash()
   }
 
   def updateDigest(tx: Transaction, digest: CryptographicDigester): Unit = {
+    digest.updateWith(tx.id)
     digest.updateWith(tx.sponsor)
     digest.updateWith(tx.nonce)
     digest.updateWith(tx.gasPrice)
@@ -175,10 +152,13 @@ class DefaultExecutionEngine[P, MS](config: BlockchainConfig, computingSpace: Co
   }
 
   private def executeEtherTransfer(gs: GlobalState[MS], tx: Transaction.EtherTransfer): (GlobalState[MS], TransactionExecutionResult) = {
-    return if (gs.accountBalance(tx.sponsor) >= tx.value)
-      (gs.transfer(tx.sponsor, tx.targetAccount, tx.value), TransactionExecutionResult.Success(config.transferCost))
-    else
-      (gs, TransactionExecutionResult.AccountBalanceInsufficientForTransfer(config.transferCost, tx.value, gs.accountBalance(tx.sponsor)))
+    if (! gs.accounts.contains(tx.targetAccount))
+      return (gs, TransactionExecutionResult.TargetAccountUnknown(config.transferCost, tx.targetAccount))
+
+    if (gs.accountBalance(tx.sponsor) < tx.value)
+      return (gs, TransactionExecutionResult.AccountBalanceInsufficientForTransfer(config.transferCost, tx.value, gs.accountBalance(tx.sponsor)))
+
+    return (gs.transfer(tx.sponsor, tx.targetAccount, tx.value), TransactionExecutionResult.Success(config.transferCost))
   }
 
   private def executeBonding(gs: GlobalState[MS], tx: Transaction.Bonding, blockTime: Gas): (GlobalState[MS], TransactionExecutionResult) = {

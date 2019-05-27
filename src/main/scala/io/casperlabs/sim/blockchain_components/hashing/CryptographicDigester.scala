@@ -11,5 +11,5 @@ trait CryptographicDigester {
   def updateWith(long: Long): Unit
   def updateWith(boolean: Boolean): Unit
   def updateWith(bytearray: Array[Byte]): Unit
-  def updateWithHash(hash: Hash): Unit = this.updateWith(hash.bytes)
+  def updateWith(hash: Hash): Unit = this.updateWith(hash.bytes)
 }

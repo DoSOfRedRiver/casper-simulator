@@ -1,6 +1,8 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
+import io.casperlabs.sim.abstract_blockchain.{AbstractBlock, ValidatorId}
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorState.UnconsumedBlockRewardInfo
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 import scala.collection.immutable.Queue
 
@@ -15,7 +17,7 @@ import scala.collection.immutable.Queue
   * @param unbondingEscrow pseudo-account where the unbonding escrow is kept (ether took from stake while appending a new unbonding request to the waiting queue)
   * @param unconsumedBlockRewards collection of block rewards this validator can claim
   */
-private[execution_engine] class ValidatorState private (
+class ValidatorState private (
                                val id: ValidatorId,
                                val account: Account,
                                val stake: Ether,
@@ -25,7 +27,7 @@ private[execution_engine] class ValidatorState private (
                             )
 {
 
-  def registerBlockRewardDue(blockId: BlockId, amount: Ether, pTime: Gas): ValidatorState =
+  def registerBlockRewardDue(blockId: AbstractBlock.PseudoId, amount: Ether, pTime: Gas): ValidatorState =
     if (amount == 0) //this actually happens as a corner case, where the block burned only tiny amount of gas and the stake of validator is so small,
       this           //that effective reward is less than 0 ether; then rounding comes into play and we end up with zero
     else
@@ -52,6 +54,20 @@ private[execution_engine] class ValidatorState private (
 
   def isReadyToBeForgotten: Boolean = stake == 0 && bondingEscrow == 0 && unbondingEscrow == 0
 
+  def updateDigest(digester: CryptographicDigester): Unit = {
+    digester.updateWith(id)
+    digester.updateWith(account)
+    digester.updateWith(stake)
+    digester.updateWith(bondingEscrow)
+    digester.updateWith(unbondingEscrow)
+    for (item <- unconsumedBlockRewards) {
+      digester.updateWith(item.amount)
+      digester.updateWith(item.blockId.positionInPerValidatorChain)
+      digester.updateWith(item.blockId.validator)
+      digester.updateWith(item.pTimeWhenEarned)
+    }
+  }
+
 }
 
 object ValidatorState {
@@ -60,7 +76,7 @@ object ValidatorState {
     new ValidatorState(id, account, stake, 0, 0, Queue.empty[UnconsumedBlockRewardInfo])
 
 
-  case class UnconsumedBlockRewardInfo(pTimeWhenEarned: Gas, blockId: BlockId, amount: Ether) extends Ordered[UnconsumedBlockRewardInfo] {
+  case class UnconsumedBlockRewardInfo(pTimeWhenEarned: Gas, blockId: AbstractBlock.PseudoId, amount: Ether) extends Ordered[UnconsumedBlockRewardInfo] {
     override def compare(that: UnconsumedBlockRewardInfo): Int = this.pTimeWhenEarned.compareTo(that.pTimeWhenEarned)
   }
 

@@ -1,6 +1,9 @@
 package io.casperlabs.sim.data_generators
 
+import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace
 import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace._
+import io.casperlabs.sim.blockchain_components.execution_engine.Gas
+import io.casperlabs.sim.statistics.{GaussDistributionGenerator, GaussDistributionParams}
 
 import scala.annotation.switch
 import scala.util.Random
@@ -21,21 +24,22 @@ import scala.util.Random
   * @param averageLength average length of a program (as number of statements)
   * @param standardDeviation standard deviation of program length
   * @param memorySize cell addresses in resulting programs picked from [0 ... memorySize - 1] interval
-  * @param frequenciesOfStatements map of relative frequencies of statements (frequencies do not have to be normalized)
+  * @param statementsFrequencyTable map of relative frequencies of statements (frequencies do not have to be normalized)
   * @param entanglementFactor cellPool to program length ratio
   */
 class BinaryArraySpaceProgramsGenerator(
                                          random: Random,
-                                         averageLength: Double,
-                                         standardDeviation: Double,
+                                         programSizeRange: GaussDistributionParams,
                                          memorySize: Int,
-                                         frequenciesOfStatements: Map[Int,Double],
-                                         entanglementFactor: Double
-                                       ) {
+                                         statementsFrequencyTable: Map[Int,Double],
+                                         entanglementFactor: Double,
+                                         gasLimitToProgramSizeFactor: Double,
+                                       ) extends ProgramsGenerator[BinaryArraySpace.Program, BinaryArraySpace.MemoryState, BinaryArraySpace.ComputingSpace.type] {
 
-  private val statementSelector: RandomSelector[Int] = new RandomSelector(frequenciesOfStatements, random)
+  private val statementSelector: RandomSelector[Int] = new RandomSelector(random, statementsFrequencyTable)
+  private val programSizeGenerator = new GaussDistributionGenerator(random, programSizeRange)
 
-  def next(): Program.Simple = {
+  def next(): (Program.Simple, Gas) = {
     val programLength = nextRandomProgramLength()
     val cellPoolSize: Int = math.max(1, (programLength * entanglementFactor).toInt)
     val cellPool = new Array[Int](cellPoolSize)
@@ -69,11 +73,12 @@ class BinaryArraySpaceProgramsGenerator(
         case StatementCode.nop => Statement.Nop
       }
 
-    return Program.withStatements(statements)
+    val gasLimit: Gas = (programLength * gasLimitToProgramSizeFactor).toLong
+    return (Program.withStatements(statements), gasLimit)
   }
 
   private def nextRandomProgramLength(): Int = {
-    val g: Double = random.nextGaussian() * standardDeviation + averageLength
+    val g: Double = programSizeGenerator.next()
     return math.max(g.toInt, 1)
   }
 

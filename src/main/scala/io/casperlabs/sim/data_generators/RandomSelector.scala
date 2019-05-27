@@ -13,7 +13,7 @@ import scala.util.Random
   * @param tag
   * @tparam T type of elements to be selected
   */
-class RandomSelector[T](freqMap: Map[T, Double], random: Random)(implicit tag: ClassTag[T]) {
+class RandomSelector[T](random: Random, freqMap: Map[T, Double])(implicit tag: ClassTag[T]) {
   //we use primitive arrays here to achieve best performance and smallest memory footprint
   private val (items, partialSums): (Array[T], Array[Double]) = this.initializeTables(freqMap)
 
@@ -26,7 +26,7 @@ class RandomSelector[T](freqMap: Map[T, Double], random: Random)(implicit tag: C
     return items.last
   }
 
-  private def initializeTables(freqMap: Map[T, Double])(implicit tag: ClassTag[T]): (Array[T], Array[Double]) = {
+  private def initializeTables(freqMap: Map[T, Double]): (Array[T], Array[Double]) = {
     if (freqMap.isEmpty)
       throw new RuntimeException("Empty frequencies map in random selector")
 
@@ -37,14 +37,8 @@ class RandomSelector[T](freqMap: Map[T, Double], random: Random)(implicit tag: C
     if (freqSum < 0.00001)
       throw new RuntimeException("Invalid freq map in random selector - sum is (almost) zero")
 
-    val partialSums = new Array[Double](freqTable.length)
-    var sumAccumulator: Double = 0
-    for (i <- items.indices) {
-      sumAccumulator += freqTable(i) / freqSum
-      partialSums(i) = sumAccumulator
-    }
-
-    return (items, partialSums)
+    val partialSumsWithLeadingZero = freqTable.scanLeft(0.0) {case (acc, freq) => acc + freq / freqSum}
+    return (items, partialSumsWithLeadingZero.drop(1).toArray)
   }
 
 }

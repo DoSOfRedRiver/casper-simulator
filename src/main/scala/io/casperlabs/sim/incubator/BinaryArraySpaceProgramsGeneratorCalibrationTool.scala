@@ -1,21 +1,21 @@
-package io.casperlabs.sim.blockchain_components.computing_spaces
+package io.casperlabs.sim.incubator
 
+import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace
+import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace.{ComputingSpace, StatementCode}
 import io.casperlabs.sim.data_generators.BinaryArraySpaceProgramsGenerator
-import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace.StatementCode
-import io.casperlabs.sim.blockchain_components.computing_spaces.BinaryArraySpace._
+import io.casperlabs.sim.statistics.GaussDistributionParams
 
 import scala.util.Random
 
-object RandomProgramsPlayground {
+object BinaryArraySpaceProgramsGeneratorCalibrationTool {
 
   val cs = BinaryArraySpace.ComputingSpace
 
   val gen = new BinaryArraySpaceProgramsGenerator(
     random = new Random,
-    averageLength = 20,
-    standardDeviation = 10,
-    memorySize = 200,
-    frequenciesOfStatements = Map(
+    programSizeRange = GaussDistributionParams(20,10),
+    memorySize = 10000,
+    statementsFrequencyTable = Map(
       StatementCode.addToAcc -> 1.5,
       StatementCode.assert -> 0.002,
       StatementCode.branch -> 0.3,
@@ -27,7 +27,8 @@ object RandomProgramsPlayground {
       StatementCode.storeAcc -> 1,
       StatementCode.write -> 1,
     ),
-    entanglementFactor = 0.5
+    entanglementFactor = 0.5,
+    gasLimitToProgramSizeFactor = 2.0
   )
 
   def main(args: Array[String]): Unit = {
@@ -43,8 +44,8 @@ object RandomProgramsPlayground {
     var successCount: Int = 0
 
     for (i <- 0 to n) {
-      val program = gen.next()
-      val executionResult = cs.execute(program, cs.initialState, 200)
+      val (program, gasLimit) = gen.next()
+      val executionResult = cs.execute(program, cs.initialState, gasLimit)
       executionResult match {
         case ComputingSpace.ProgramResult.Success(ms, gasUsed) =>
           successCount += 1
@@ -72,7 +73,7 @@ object RandomProgramsPlayground {
 
   def findNicePrograms(n: Int): Unit = {
     for (i <- 0 to n) {
-      val program = gen.next()
+      val (program, gasLimit) = gen.next()
       val executionResult = cs.execute(program, cs.initialState, 500)
       executionResult match {
         case ComputingSpace.ProgramResult.Success(ms, gasUsed) =>
@@ -91,7 +92,7 @@ object RandomProgramsPlayground {
 
   def viewAndExecuteSamplePrograms(n: Int): Unit = {
     for (i <- 0 to n) {
-      val program = gen.next()
+      val (program, gasLimit) = gen.next()
       dumpSourceCode(program)
       println("------------------------------------")
       val executionResult = cs.execute(program, cs.initialState, 200)

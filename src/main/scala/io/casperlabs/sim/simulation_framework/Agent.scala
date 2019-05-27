@@ -4,43 +4,79 @@ import io.casperlabs.sim.simulation_framework.Agent.MsgHandlingResult
 
 /**
   * Represents a participant of the simulated network.
-  *
   */
-trait Agent[MsgPayload, ExtEventPayload, PrivatePayload] {
+trait Agent[+R] {
 
-  def id: AgentId
+  /**
+    * Called by the engine to set the agent-ref.
+    */
+  def initRef(ref: AgentRef)
 
-  def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[MsgPayload,ExtEventPayload, PrivatePayload]): MsgHandlingResult[MsgPayload, PrivatePayload]
+  /**
+    * Called by the engine to initialize engine features hook.
+    */
+  def initContext(context: AgentContext)
 
-  def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[MsgPayload,ExtEventPayload, PrivatePayload]): MsgHandlingResult[MsgPayload, PrivatePayload]
+  /**
+    * My reference (given by the engine).
+    */
+  def ref: AgentRef
 
-  def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent[MsgPayload,ExtEventPayload, PrivatePayload]): MsgHandlingResult[MsgPayload, PrivatePayload]
+  /**
+    * User-readable identifier of an agent - something like "client-324" or "server-15" or "bridge-1".
+    * In any user-friendly presentation of the arena, names are going to be the primary way of "labelling" agents.
+    * This name must be unique on the arena and must never change.
+    * Agents naming schema is not decided here - we expect this to be heavily model-specific.
+    */
+  def label: String
 
-  def startup(): Unit
+  /**
+    * Called by the engine only once - when this agent starts his life.
+    */
+  def onStartup(time: Timepoint): MsgHandlingResult[R]
+
+  /**
+    * Called by the engine upon termination of the sim.
+    */
+  def onSimulationEnd(time: Timepoint): MsgHandlingResult[R]
+
+  /**
+    * Handler of incoming agent-to-agent messages.
+    */
+  def handleMessage(msg: SimEventsQueueItem.AgentToAgentMsg): MsgHandlingResult[R]
+
+  /**
+    * Handler of incoming external events.
+    */
+  def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent): MsgHandlingResult[R]
+
+  /**
+    * Handler of incoming private events (= alerts I set for myself)
+    */
+  def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent): MsgHandlingResult[R]
+
 }
 
 object Agent {
 
-  case class MsgHandlingResult[MsgPayload, PrivatePayload](
-                                                            outgoingMessages: Iterable[(AgentId, MsgPayload)],
-                                                            privateEvents: Iterable[(Timepoint, PrivatePayload)],
-                                                            consumedTime: TimeDelta
-                                                          )
+  case class MsgHandlingResult[+R](outgoingMessages: List[OutgoingMsgEnvelope], simRecordingItems: List[R])
+
+  //encodes stuff that agents produce as a result of handling a message
+  //it is the sim engine role to transform them to actual SimEventsQueue items
+  sealed abstract class OutgoingMsgEnvelope {
+    val relativeTimeOfSendingThisMessage: TimeDelta //relative against the timepoint or arrival of message, which was the currently handled message when the 'send' happened
+    val payload: Any
+  }
+
+  object OutgoingMsgEnvelope {
+    case class Tell(destination: AgentRef, relativeTimeOfSendingThisMessage: TimeDelta, payload: Any) extends OutgoingMsgEnvelope
+    case class Private(relativeTimeOfSendingThisMessage: TimeDelta, deliveryDelay: TimeDelta, payload: Any) extends OutgoingMsgEnvelope
+    //todo: in case of adding request-response support, both Request and Response will be added here (with correlation as part of the structure)
+  }
+
+
   object MsgHandlingResult {
-    def empty[MsgPayload, PrivatePayload]: MsgHandlingResult[MsgPayload, PrivatePayload] =
-      MsgHandlingResult(Nil, Nil, 0L)
+    def empty: MsgHandlingResult[Nothing] = MsgHandlingResult[Nothing](Nil, Nil)
   }
 
-  def noOp[MsgPayload, ExtEventPayload, PrivatePayload](id: AgentId): Agent[MsgPayload, ExtEventPayload, PrivatePayload] =
-    NoOp(id)
-
-  case class NoOp[MsgPayload, ExtEventPayload, PrivatePayload](override val id: AgentId) extends Agent[MsgPayload, ExtEventPayload, PrivatePayload] {
-    override def handleExternalEvent(event: SimEventsQueueItem.ExternalEvent[MsgPayload, ExtEventPayload, PrivatePayload]): MsgHandlingResult[MsgPayload, PrivatePayload] = MsgHandlingResult.empty
-
-    override def handleMsg(msg: SimEventsQueueItem.AgentToAgentMsg[MsgPayload, ExtEventPayload, PrivatePayload]): MsgHandlingResult[MsgPayload, PrivatePayload] = MsgHandlingResult.empty
-
-    override def handlePrivateEvent(event: SimEventsQueueItem.PrivateEvent[MsgPayload,ExtEventPayload, PrivatePayload]): MsgHandlingResult[MsgPayload, PrivatePayload] = MsgHandlingResult.empty
-
-    override def startup(): Unit = ()
-  }
 }

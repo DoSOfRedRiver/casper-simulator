@@ -1,13 +1,13 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
 import io.casperlabs.sim.BaseSpec
-import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
+import io.casperlabs.sim.abstract_blockchain.{BlockchainConfig, ValidatorId}
 import io.casperlabs.sim.blockchain_components.computing_spaces.{ComputingSpace, MockingSpace}
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorState.UnconsumedBlockRewardInfo
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook.ActiveRewardsPaymentQueueItem
 import io.casperlabs.sim.blockchain_components.execution_engine._
-import io.casperlabs.sim.blockchain_components.hashing.FakeHashGenerator
+import io.casperlabs.sim.blockchain_components.hashing.FakeSha256Digester
 import org.scalatest.enablers.Containing._
 
 import scala.collection.immutable.Queue
@@ -56,22 +56,21 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   val ee = new DefaultExecutionEngine(config, computingSpace)
   val blocksExecutor = new CasperMainchainBlocksExecutor[CS,P,MS](ee, config)
   val random = new Random(42) //fixed seed, so tests are deterministic
-  val blockIdGen = new FakeHashGenerator(random)
   val gasPrice: Ether = 1
 
   //#################################### GENESIS GLOBAL STATE #################################
 
-  val account1 = 1
-  val account2 = 2
-  val account3 = 3
-  val account4 = 4
-  val account5 = 5
+  val account1: Account = 1
+  val account2: Account = 2
+  val account3: Account = 3
+  val account4: Account = 4
+  val account5: Account = 5
 
-  val validator1 = 101 //bonded since genesis; making the initial sequence of blocks
-  val validator2 = 102 //bonded since genesis; testing accumulating and consuming rewards
-  val validator3 = 103 //bonded since genesis but with zero stake; should be recognized as "inactive" and not break the logic
-  val validator4 = 104 //new validator that attempts to join the club
-  val validator5 = 105 //bonded since genesis; never making a block and so at some point missing his rewards
+  val validator1: ValidatorId = 101 //bonded since genesis; making the initial sequence of blocks
+  val validator2: ValidatorId = 102 //bonded since genesis; testing accumulating and consuming rewards
+  val validator3: ValidatorId = 103 //bonded since genesis but with zero stake; should be recognized as "inactive" and not break the logic
+  val validator4: ValidatorId = 104 //new validator that attempts to join the club
+  val validator5: ValidatorId = 105 //bonded since genesis; never making a block and so at some point missing his rewards
 
   val accountsRegistry = new AccountsRegistry(
     Map (
@@ -95,7 +94,10 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
   //#################################### TRANSACTIONS #################################
 
+  val transactionHashGenerator = new FakeSha256Digester(random)
+
   val acc4_creation = Transaction.AccountCreation(
+    transactionHashGenerator.generateHash(),
     nonce = 0,
     sponsor = account1,
     gasPrice = 1,
@@ -104,15 +106,17 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_to_acc4_transfer = Transaction.EtherTransfer(
+    transactionHashGenerator.generateHash(),
     nonce = 1,
     sponsor = account1,
     gasPrice = 1,
     gasLimit = 200,
     targetAccount = account4,
-    value = 70
+    value = 150
   )
 
   val v1_bonding = Transaction.Bonding(
+    transactionHashGenerator.generateHash(),
     nonce = 2,
     sponsor = account1,
     gasPrice = 1,
@@ -122,6 +126,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val v4_bonding = Transaction.Bonding(
+    transactionHashGenerator.generateHash(),
     nonce = 0,
     sponsor = account4,
     gasPrice = 1,
@@ -131,6 +136,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_smart_contract_happy = Transaction.SmartContractExecution(
+    transactionHashGenerator.generateHash(),
     nonce = 3,
     sponsor = account1,
     gasPrice = 1,
@@ -139,6 +145,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_smart_contract_happy2 = Transaction.SmartContractExecution(
+    transactionHashGenerator.generateHash(),
     nonce = 4,
     sponsor = account1,
     gasPrice = 1,
@@ -148,6 +155,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
 
   val v1_unbonding = Transaction.Unbonding(
+    transactionHashGenerator.generateHash(),
     nonce = 5,
     sponsor = account1,
     gasPrice = 1,
@@ -158,6 +166,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
 
   val acc1_smart_contract_crashing = Transaction.SmartContractExecution(
+    transactionHashGenerator.generateHash(),
     nonce = 6,
     sponsor = account1,
     gasPrice = 1,
@@ -166,6 +175,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   )
 
   val acc1_smart_contract_looping = Transaction.SmartContractExecution(
+    transactionHashGenerator.generateHash(),
     nonce = 7,
     sponsor = account1,
     gasPrice = 1,
@@ -175,42 +185,38 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
 
   //#################################### BLOCKS #################################
 
-  val genesis = Genesis.generate("casperlabs", ee.globalStateHash(genesisGlobalState))
+  val genesis = Block.generateGenesisBlock("casperlabs", genesisGlobalState.validatorsBook.validatorWeightsMap, ee.globalStateHash(genesisGlobalState))
 
-  def makeBlock(creator: ValidatorId, parent: Block, postStateOfParent: GlobalState[MS], tx: Transaction): (Block, GlobalState[MS]) = {
+  def makeBlock(creator: ValidatorId, parent: Block, positionInChain: Int, postStateOfParent: GlobalState[MS], tx: Transaction): (Block, GlobalState[MS], Map[Transaction, TransactionExecutionResult]) = {
     val pTimeOfThisBlock = parent.pTime + parent.gasBurned
-    val newBlockId = blocksExecutor.calculateBlockId(validator1, IndexedSeq(parent.id), IndexedSeq(parent.id), IndexedSeq(tx), parent.postStateHash)
-    val (postState, gasBurned) = blocksExecutor.executeBlockAsCreator(postStateOfParent, pTimeOfThisBlock, newBlockId, creator, IndexedSeq(tx))
 
-    val block = NormalBlock(
-      id = newBlockId,
-      creator,
+    val creationResult = blocksExecutor.createBlock(
+      preState = postStateOfParent,
+      pTime = parent.pTime + parent.gasBurned,
       dagLevel = parent.dagLevel + 1,
+      positionInPerValidatorChain = positionInChain,
+      creator,
       parents = IndexedSeq(parent),
       justifications = IndexedSeq(parent),
-      transactions = IndexedSeq(tx),
-      pTime = parent.pTime + parent.gasBurned,
-      gasBurned = gasBurned,
-      preStateHash = ee.globalStateHash(postStateOfParent),
-      postStateHash = ee.globalStateHash(postState)
+      transactions = IndexedSeq(tx)
     )
 
-    return (block, postState)
+    return (creationResult.block, creationResult.postState, creationResult.txExecutionResults)
   }
 
   trait CommonSetup {
     //we are building a simple blockdag here, which is actually a chain (every block has only one parent)
     //the blockchain is complex enough to activate all corner cases in the processing
 
-    val (block1, gsAfterB1) = makeBlock(validator1, genesis, genesisGlobalState, acc4_creation)
-    val (block2, gsAfterB2) = makeBlock(validator1, block1, gsAfterB1, acc1_to_acc4_transfer)
-    val (block3, gsAfterB3) = makeBlock(validator1, block2, gsAfterB2, v1_bonding)
-    val (block4, gsAfterB4) = makeBlock(validator2, block3, gsAfterB3, v4_bonding)
-    val (block5, gsAfterB5) = makeBlock(validator1, block4, gsAfterB4, acc1_smart_contract_happy)
-    val (block6, gsAfterB6) = makeBlock(validator1, block5, gsAfterB5, acc1_smart_contract_happy2)
-    val (block7, gsAfterB7) = makeBlock(validator4, block6, gsAfterB6, v1_unbonding)
-    val (block8, gsAfterB8) = makeBlock(validator1, block7, gsAfterB7, acc1_smart_contract_crashing)
-    val (block9, gsAfterB9) = makeBlock(validator1, block8, gsAfterB8, acc1_smart_contract_looping)
+    val (block1, gsAfterB1, errors1) = makeBlock(validator1, genesis, positionInChain = 1, genesisGlobalState, acc4_creation)
+    val (block2, gsAfterB2, errors2) = makeBlock(validator1, block1, positionInChain = 2, gsAfterB1, acc1_to_acc4_transfer)
+    val (block3, gsAfterB3, errors3) = makeBlock(validator1, block2, positionInChain = 3, gsAfterB2, v1_bonding)
+    val (block4, gsAfterB4, errors4) = makeBlock(validator2, block3, positionInChain = 1, gsAfterB3, v4_bonding)
+    val (block5, gsAfterB5, errors5) = makeBlock(validator1, block4, positionInChain = 4, gsAfterB4, acc1_smart_contract_happy)
+    val (block6, gsAfterB6, errors6) = makeBlock(validator1, block5, positionInChain = 5, gsAfterB5, acc1_smart_contract_happy2)
+    val (block7, gsAfterB7, errors7) = makeBlock(validator4, block6, positionInChain = 1, gsAfterB6, v1_unbonding)
+    val (block8, gsAfterB8, errors8) = makeBlock(validator1, block7, positionInChain = 6, gsAfterB7, acc1_smart_contract_crashing)
+    val (block9, gsAfterB9, errors9) = makeBlock(validator1, block8, positionInChain = 7, gsAfterB8, acc1_smart_contract_looping)
   }
 
   "casper mainchain blocks executor" must "pass the bonding-unbonding sequence with interlacing requests" in new CommonSetup {
@@ -218,7 +224,7 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     genesisGlobalState.accountBalance(account1) shouldBe 1000L
     genesisGlobalState.validatorsBook.currentStakeOf(validator1) shouldBe 500L
 
-    gsAfterB2.accountBalance(account4) shouldBe 70L
+    gsAfterB2.accountBalance(account4) shouldBe 150L
 
     gsAfterB3.validatorsBook.bondingQueue should contain (ValidatorsBook.BondingQueueItem(validator1, 50L, block3.pTime, block3.pTime + config.bondingDelay))
 
@@ -250,10 +256,10 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   it must "correctly calculate block rewards" in new CommonSetup {
     genesisGlobalState.validatorsBook.blocksWithActiveRewardsPayment shouldBe Queue.empty
     genesisGlobalState.validatorsBook.getInfoAbout(validator1).unconsumedBlockRewards shouldBe empty
-    gsAfterB1.validatorsBook.blocksWithActiveRewardsPayment.toList shouldEqual List(ActiveRewardsPaymentQueueItem(block1.pTime, block1.id, validator1))
+    gsAfterB1.validatorsBook.blocksWithActiveRewardsPayment.toList shouldEqual List(ActiveRewardsPaymentQueueItem(block1.pTime, block1.pseudoId, validator1))
     val amountEarned: Ether = block1.gasBurned * gsAfterB1.validatorsBook.getInfoAbout(validator2).stake / gsAfterB1.validatorsBook.totalStake
     gsAfterB1.validatorsBook.getInfoAbout(validator2).unconsumedBlockRewards.toList shouldEqual List(
-      UnconsumedBlockRewardInfo(block1.pTime, block1.id, amountEarned)
+      UnconsumedBlockRewardInfo(block1.pTime, block1.pseudoId, amountEarned)
     )
   }
 
@@ -266,8 +272,8 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
     val amountEarnedForB4: Ether = block4.gasBurned * v2stake / totalStake
 
     gsAfterB3.validatorsBook.getInfoAbout(validator2).unconsumedBlockRewards.toList shouldEqual List(
-      UnconsumedBlockRewardInfo(block1.pTime, block1.id, amountEarnedForB1),
-      UnconsumedBlockRewardInfo(block3.pTime, block3.id, amountEarnedForB3)
+      UnconsumedBlockRewardInfo(block1.pTime, block1.pseudoId, amountEarnedForB1),
+      UnconsumedBlockRewardInfo(block3.pTime, block3.pseudoId, amountEarnedForB3)
     )
 
     gsAfterB4.validatorsBook.getInfoAbout(validator2).unconsumedBlockRewards shouldEqual Queue.empty
@@ -293,8 +299,8 @@ class CasperMainchainBlocksExecutorSpec extends BaseSpec {
   }
 
   it must "cleanup the rewards queue according to p-time" in new CommonSetup {
-    gsAfterB8.validatorsBook.blocksWithActiveRewardsPayment.contains(ActiveRewardsPaymentQueueItem(32, block4.id, validator2)) shouldBe true
-    gsAfterB9.validatorsBook.blocksWithActiveRewardsPayment.contains(ActiveRewardsPaymentQueueItem(32, block4.id, validator2)) shouldBe false
+    gsAfterB8.validatorsBook.blocksWithActiveRewardsPayment.contains(ActiveRewardsPaymentQueueItem(32, block4.pseudoId, validator2)) shouldBe true
+    gsAfterB9.validatorsBook.blocksWithActiveRewardsPayment.contains(ActiveRewardsPaymentQueueItem(32, block4.pseudoId, validator2)) shouldBe false
   }
 
 }

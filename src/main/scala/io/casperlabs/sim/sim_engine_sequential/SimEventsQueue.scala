@@ -12,6 +12,7 @@ import scala.collection.mutable
   * type 1. agent-to-agent message delivery (by time of scheduled message delivery)
   * type 2. new agent showing up in the network (by time of creation) - provided by agents creation stream
   * type 3. external events - provided by external events stream (by time of event)
+  * type 4: private events - these are events an agent sends to itself, which is an approach to implement "timers" feature
   *
   * Every event is handled by a single agent. In effect of this handling - arbitrary number of type-1 messages
   * is be created and so they must be explicitly enqueued. Type-2 and type-3 are created "automagically" in the background
@@ -20,37 +21,40 @@ import scala.collection.mutable
   * @tparam MsgPayload
   * @tparam ExtEventPayload
   */
-class SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload] {
-  private implicit val queueItemsOrdering: Ordering[SimEventsQueueItem[MsgPayload, ExtEventPayload, PrivatePayload]] = new QueueItemsOrdering[MsgPayload,ExtEventPayload,PrivatePayload]
-  private val queue = new mutable.PriorityQueue[SimEventsQueueItem[MsgPayload, ExtEventPayload, PrivatePayload]]
+class SimEventsQueue[R] {
+  private implicit val queueItemsOrdering = Ordering[SimEventsQueueItem].reverse
+  private val queue = new mutable.PriorityQueue[SimEventsQueueItem]
   private var numberOfQueuedAgentMessages: Int = 0
-  private var extEvents: Option[ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload]] = None
-  private var createEvents: Option[AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]] = None
+  private var extEvents: Option[ExternalEventsStream] = None
+  private var createEvents: Option[AgentsCreationStream[R]] = None
   private var latestAgentMsgTimepoint: Timepoint = Timepoint(0)
   private var latestExtEventTimepoint: Timepoint = Timepoint(0)
   private var latestAgentCreationTimepoint: Timepoint = Timepoint(0)
+  private var currentTime: Timepoint = Timepoint(0)
 
-  def addExternalEvents(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit ={
+  def plugInExternalEventsStream(externalEventsGenerator: ExternalEventsStream): Unit ={
     extEvents = Some(externalEventsGenerator)
     ensureExtEventsAreGeneratedUpTo(latestAgentMsgTimepoint)
   }
 
-  def addCreationEvents(agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
+  def plugInAgentsCreationStream(agentsCreationStream: AgentsCreationStream[R]): Unit = {
     createEvents = Some(agentsCreationStream)
     ensureAgentCreationsAreGeneratedUpTo(latestAgentMsgTimepoint)
   }
 
-  def enqueue(msg: SimEventsQueueItem[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
+  def enqueue(msg: SimEventsQueueItem): Unit = {
+    if (msg.scheduledDeliveryTime < currentTime)
+      throw new RuntimeException(s"time order violation at sim events queue: current time was $currentTime, trying to add $msg")
     queue.enqueue(msg)
     numberOfQueuedAgentMessages += 1
-    if (msg.scheduledTime > latestAgentMsgTimepoint) {
-      latestAgentMsgTimepoint = msg.scheduledTime
+    if (msg.scheduledDeliveryTime > latestAgentMsgTimepoint) {
+      latestAgentMsgTimepoint = msg.scheduledDeliveryTime
       ensureExtEventsAreGeneratedUpTo(latestAgentMsgTimepoint)
       ensureAgentCreationsAreGeneratedUpTo(latestAgentMsgTimepoint)
     }
   }
 
-  def dequeue(): SimEventsQueueItem[MsgPayload, ExtEventPayload, PrivatePayload] = {
+  def dequeue(): Option[SimEventsQueueItem] = {
     if (numberOfQueuedAgentMessages == 0) {
       extEvents.foreach { externalEventsGenerator =>
         generateNextExtEvent(externalEventsGenerator)
@@ -60,38 +64,46 @@ class SimEventsQueue[MsgPayload, ExtEventPayload, PrivatePayload] {
       }
     }
 
-    val result = queue.dequeue()
-    result match {
-      case e: AgentToAgentMsg[_,_,_] => numberOfQueuedAgentMessages -= 1
-      case other => //do nothing
-    }
+    if (queue.isEmpty)
+      return None
+    else {
+      val nextEvent = queue.dequeue()
+      nextEvent match {
+        case e: AgentToAgentMsg => numberOfQueuedAgentMessages -= 1
+        case other => //do nothing
+      }
 
-    return result
+      currentTime = nextEvent.scheduledDeliveryTime
+      return Some(nextEvent)
+    }
   }
 
   private def ensureExtEventsAreGeneratedUpTo(timepoint: Timepoint): Unit =
     extEvents.foreach { externalEventsGenerator =>
-      while (latestExtEventTimepoint < timepoint)
+      while (latestExtEventTimepoint < timepoint && externalEventsGenerator.hasNext)
         generateNextExtEvent(externalEventsGenerator)
     }
 
   private def ensureAgentCreationsAreGeneratedUpTo(timepoint: Timepoint): Unit =
-  createEvents.foreach { agentsCreationStream =>
-    while (latestAgentCreationTimepoint < timepoint)
-      generateNextAgentCreationEvent(agentsCreationStream)
+    createEvents.foreach { agentsCreationStream =>
+      while (latestAgentCreationTimepoint < timepoint && agentsCreationStream.hasNext)
+        generateNextAgentCreationEvent(agentsCreationStream)
+    }
+
+  private def generateNextExtEvent(externalEventsGenerator: ExternalEventsStream): Unit = {
+    if (externalEventsGenerator.hasNext) {
+      val event = externalEventsGenerator.next()
+      queue.enqueue(event)
+      latestExtEventTimepoint = event.scheduledDeliveryTime
+    }
   }
 
-  private def generateNextExtEvent(externalEventsGenerator: ExternalEventsStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
-    val event = externalEventsGenerator.next()
-    queue.enqueue(event)
-    latestExtEventTimepoint = event.scheduledTime
+  private def generateNextAgentCreationEvent(agentsCreationStream: AgentsCreationStream[R]): Unit = {
+    if (agentsCreationStream.hasNext) {
+      val event = agentsCreationStream.next()
+      queue.enqueue(event)
+      latestAgentCreationTimepoint = event.scheduledDeliveryTime
+    }
   }
-
-  private def generateNextAgentCreationEvent(agentsCreationStream: AgentsCreationStream[MsgPayload, ExtEventPayload, PrivatePayload]): Unit = {
-    val event = agentsCreationStream.next()
-    queue.enqueue(event)
-    latestAgentCreationTimepoint = event.scheduledTime
-  }
-
 
 }

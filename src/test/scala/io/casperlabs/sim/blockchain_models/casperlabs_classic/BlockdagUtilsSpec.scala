@@ -1,12 +1,9 @@
 package io.casperlabs.sim.blockchain_models.casperlabs_classic
 
-import io.casperlabs.sim.blockchain_components.DoublyLinkedDag
-
+import io.casperlabs.sim.blockchain_components.execution_engine.Ether
+import io.casperlabs.sim.blockchain_components.graphs.DoublyLinkedDag
+import io.casperlabs.sim.blockchain_models.casperlabs_classic.BlockdagUtilsSpec._
 import org.scalatest.{FlatSpec, Matchers}
-
-import scala.annotation.tailrec
-
-import BlockdagUtilsSpec._
 
 class BlockdagUtilsSpec extends FlatSpec with Matchers {
 
@@ -21,7 +18,7 @@ class BlockdagUtilsSpec extends FlatSpec with Matchers {
      *       genesis
      */
 
-    val weightsMap = Map(
+    val weightsMap = Map[Char, Ether](
       'A' -> 3,
       'B' -> 5,
       'C' -> 7
@@ -71,7 +68,7 @@ class BlockdagUtilsSpec extends FlatSpec with Matchers {
      *       genesis
      */
 
-    val weightsMap = Map(
+    val weightsMap = Map[ValidatorId, Ether](
       'A' -> 3,
       'B' -> 5,
       'C' -> 7
@@ -100,7 +97,7 @@ class BlockdagUtilsSpec extends FlatSpec with Matchers {
       dagFromTips(Vector(i, h, g))
     )
 
-    scores shouldEqual Map(
+    scores shouldEqual Map[MockBlock, Ether](
       genesis -> (3 + 5 + 7),
       a -> (3 + 7),
       b -> (3 + 5 + 7),
@@ -130,7 +127,7 @@ class BlockdagUtilsSpec extends FlatSpec with Matchers {
      *       genesis
      */
 
-    val weightsMap = Map(
+    val weightsMap = Map[ValidatorId, Ether](
       'A' -> 3,
       'B' -> 5,
       'C' -> 7
@@ -169,7 +166,7 @@ class BlockdagUtilsSpec extends FlatSpec with Matchers {
 
 object BlockdagUtilsSpec {
   type ValidatorId = Char
-  type Weight = Int
+  type Weight = Ether
 
   case class MockBlock(id: Int, parents: IndexedSeq[MockBlock], weights: Map[ValidatorId, Weight]) {
     override def toString: String = s"MockBlock($id)"

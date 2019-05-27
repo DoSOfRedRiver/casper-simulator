@@ -1,4 +1,4 @@
-package io.casperlabs.sim.blockchain_components
+package io.casperlabs.sim.blockchain_components.graphs
 
 import io.casperlabs.sim.blockchain_models.casperlabs_classic.Block
 

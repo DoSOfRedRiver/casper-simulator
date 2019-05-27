@@ -1,7 +1,7 @@
 package io.casperlabs.sim.abstract_blockchain
 
-import io.casperlabs.sim.blockchain_components.execution_engine.{BlockId, NodeId, Transaction}
-import io.casperlabs.sim.simulation_framework.Timepoint
+import io.casperlabs.sim.blockchain_components.execution_engine.Transaction
+import io.casperlabs.sim.simulation_framework.{AgentRef, Timepoint}
 import rx.{Observable, Observer}
 
 /**
@@ -20,14 +20,9 @@ trait BlockchainSimulationFactory[MS] {
 
 /**
   * Abstraction of a blockchain simulation (as seen in the simulator).
-  * We need this level of abstraction to compare different blockchain implementations.
-  *
-  * This is a stateful, process-like entity (can be controlled by starting-pausing-stopping.
-  * When it runs, it:
-  *   1. Consumes stream of transaction.
-  *   2. Produces 3 streams of events (= block proposals, block deliveries, block finalizations).
+  * We need this level of abstraction to be able to compare different blockchain implementations.
   */
-trait BlockchainSimulation extends Observable[SimulationOutputItem] with Observer [ScheduledDeploy] {
+trait BlockchainSimulation extends Observable[BlockchainSimulationOutputItem] with Observer [ScheduledDeploy] {
 }
 
 /**
@@ -37,17 +32,14 @@ trait BlockchainSimulation extends Observable[SimulationOutputItem] with Observe
   * @param deliveryTimepoint scheduled timepoint of delivery
   * @param node target node
   */
-case class ScheduledDeploy(transaction: Transaction, deliveryTimepoint: Timepoint, node: NodeId)
+case class ScheduledDeploy(id: Long, transaction: Transaction, deliveryTimepoint: Timepoint, node: AgentRef)
 
+abstract class BlockchainSimulationOutputItem
 
-abstract class SimulationOutputItem
-
-object SimulationOutputItem {
-  case class DeployWasDelivered(time: Timepoint, targetNode: NodeId, transaction: Transaction) extends SimulationOutputItem
-  case class NewNodeJoinedTheNetwork(node: NodeId) extends SimulationOutputItem
-  case class BlockWasAnnouncedViaProposed[B <: AbstractBlock](time: Timepoint, origin: NodeId, block: B) extends SimulationOutputItem
-  case class NewBlockWasDeliveredViaGossip(time: Timepoint, nodeId: NodeId, blockId: BlockId) extends SimulationOutputItem
-  case class BlockWasFinalized(time: Timepoint, nodeIdThatRecognizedFinalization: NodeId, block: BlockId) extends SimulationOutputItem
-  case class AgentMessageWasSent(time: Timepoint, message: Any) extends SimulationOutputItem
-  case class AgentMessageWasDelivered(time: Timepoint, message: Any) extends SimulationOutputItem
+object BlockchainSimulationOutputItem {
+  case class DeployWasDelivered(time: Timepoint, targetNode: NodeId, transaction: Transaction) extends BlockchainSimulationOutputItem
+  case class NewNodeJoinedTheNetwork(node: NodeId) extends BlockchainSimulationOutputItem
+  case class BlockWasAnnouncedViaProposed[B <: AbstractBlock](time: Timepoint, origin: NodeId, block: B) extends BlockchainSimulationOutputItem
+  case class NewBlockWasDeliveredViaGossip(time: Timepoint, nodeId: NodeId, blockId: BlockId) extends BlockchainSimulationOutputItem
+  case class BlockWasFinalized(time: Timepoint, nodeIdThatRecognizedFinalization: NodeId, block: BlockId) extends BlockchainSimulationOutputItem
 }

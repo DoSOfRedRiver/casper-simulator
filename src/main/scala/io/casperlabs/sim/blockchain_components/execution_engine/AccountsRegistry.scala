@@ -1,6 +1,7 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
 import io.casperlabs.sim.blockchain_components.execution_engine.AccountsRegistry.AccountState
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 /**
   * Immutable data structure we use to keep complete information about accounts (as seen on-chain).
@@ -85,6 +86,14 @@ class AccountsRegistry (m: Map[Account, AccountState]) {
   }
 
   def contains(account: Account): Boolean = m.contains(account)
+
+  def updateDigest(digester: CryptographicDigester): Unit = {
+    for ((account, state) <- m) {
+      digester.updateWith(account)
+      digester.updateWith(state.nonce)
+      digester.updateWith(state.balance)
+    }
+  }
 
 }
 

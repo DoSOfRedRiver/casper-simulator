@@ -1,7 +1,8 @@
 package io.casperlabs.sim.blockchain_components.execution_engine
 
-import io.casperlabs.sim.abstract_blockchain.BlockchainConfig
+import io.casperlabs.sim.abstract_blockchain.{AbstractBlock, BlockchainConfig, ValidatorId}
 import io.casperlabs.sim.blockchain_components.execution_engine.ValidatorsBook._
+import io.casperlabs.sim.blockchain_components.hashing.CryptographicDigester
 
 import scala.collection.immutable.Queue
 
@@ -27,7 +28,7 @@ import scala.collection.immutable.Queue
 class ValidatorsBook private (
                              private val validators: Map[ValidatorId, ValidatorState],
                              val blocksWithActiveRewardsPayment: Queue[ActiveRewardsPaymentQueueItem],
-                             private val blocksRewardEscrow: Map[BlockId, Ether],
+                             private val blocksRewardEscrow: Map[AbstractBlock.PseudoId, Ether],
                              val bondingQueue: Queue[BondingQueueItem],
                              val unbondingQueue: Queue[UnbondingQueueItem],
                              private val cachedNumberOfActiveValidators: Int,
@@ -204,20 +205,25 @@ class ValidatorsBook private (
   def activeValidators: Iterable[ValidatorId] = (validators filter { case (id, state) => state.stake > 0 }).keys
 
   /**
+    * Extracts validator weights map.
+    */
+  def validatorWeightsMap: Map[ValidatorId, Ether] = validators.mapValues(_.stake).filter { case (id,stake) => stake > 0 }
+
+  /**
     * Number of active validators (= validators that have non-zero current stake).
     */
   def numberOfValidators: Int = cachedNumberOfActiveValidators
 
   /**
-    * Stores per-validator info on the reward for the given block.
-    * Nothing is paid yet.
+    * Stores per-validator info on the reward for the given block. Nothing is paid yet.
     *
-    * Longer story: when a new block is created, the ether paid as transaction fees in this block is the total reward to be eventually paid
-    * to validators. This total reward is distributed across active validators according to an algorithm that part of PoS semantics.
+    * Longer story: when a new block is created, the cumulative ether paid as transaction fees for transactions in this block
+    * makes a "reward" to be eventually distributed to validators. This reward is distributed across active validators according
+    * to the algorithm that is part of PoS semantics.
     */
-  def distributeRewardsForJustCreatedBlock(blockId: BlockId, creator: ValidatorId, blockTime: Gas, totalReward: Ether): ValidatorsBook = {
+  def distributeRewardsForJustCreatedBlock(blockId: AbstractBlock.PseudoId, creator: ValidatorId, blockTime: Gas, totalReward: Ether): ValidatorsBook = {
     assert(blockTime >= lastPTimeSeen)
-    assert(!blocksRewardEscrow.contains(blockId))
+    assert(! blocksRewardEscrow.contains(blockId))
 
     val updatedMapOfValidators: Map[ValidatorId, ValidatorState] = validators map {
       case (id, state) =>
@@ -278,7 +284,7 @@ class ValidatorsBook private (
       validators(validator).unconsumedBlockRewards.dropWhile(item => item.pTimeWhenEarned + timeLimitForClaimingBlockReward < pTime)
     val totalRewards: Ether = stuffToConsume.map(item => item.amount).sum
     val stateOfValidator: ValidatorState = validators(validator).resetUnconsumedBlockRewards
-    val escrowUpdatesMap: Map[BlockId, Ether] = stuffToConsume.map(item => (item.blockId, item.amount)).toMap
+    val escrowUpdatesMap: Map[AbstractBlock.PseudoId, Ether] = stuffToConsume.map(item => (item.blockId, item.amount)).toMap
     val updatedRewardsEscrow = blocksRewardEscrow map { case (blockId,ether) => (blockId, ether - escrowUpdatesMap.getOrElse(blockId, 0L))}
 
     val book: ValidatorsBook = new ValidatorsBook(
@@ -294,6 +300,44 @@ class ValidatorsBook private (
     return (book, totalRewards)
   }
 
+  def updateDigest(digester: CryptographicDigester): Unit = {
+    for (v <- validators.values)
+      v.updateDigest(digester)
+    digester.updateWith(101)
+    for (item <- blocksWithActiveRewardsPayment) {
+      digester.updateWith(item.ptime)
+      digester.updateWith(item.validator)
+      digester.updateWith(item.block.validator)
+      digester.updateWith(item.block.positionInPerValidatorChain)
+    }
+    digester.updateWith(102)
+    for ((bid,eth) <- blocksRewardEscrow) {
+      digester.updateWith(bid.validator)
+      digester.updateWith(bid.positionInPerValidatorChain)
+      digester.updateWith(eth)
+    }
+    digester.updateWith(103)
+    for (item <- bondingQueue) {
+      digester.updateWith(item.amount)
+      digester.updateWith(item.validator)
+      digester.updateWith(item.requestTime)
+      digester.updateWith(item.triggeringTime)
+
+    }
+    digester.updateWith(104)
+    for (item <- unbondingQueue) {
+      digester.updateWith(item.amount)
+      digester.updateWith(item.validator)
+      digester.updateWith(item.requestTime)
+      digester.updateWith(item.triggeringTime)
+
+    }
+    digester.updateWith(105)
+    digester.updateWith(cachedNumberOfActiveValidators)
+    digester.updateWith(cachedTotalStake)
+    digester.updateWith(lastPTimeSeen)
+  }
+
 }
 
   //########################################################## PRIVATE ###########################################################
@@ -303,7 +347,7 @@ object ValidatorsBook {
   def empty = new ValidatorsBook(
     validators = Map.empty[ValidatorId, ValidatorState],
     blocksWithActiveRewardsPayment = Queue.empty,
-    blocksRewardEscrow = Map.empty[BlockId, Ether],
+    blocksRewardEscrow = Map.empty[AbstractBlock.PseudoId, Ether],
     bondingQueue = Queue.empty,
     unbondingQueue = Queue.empty,
     cachedNumberOfActiveValidators = 0,
@@ -326,7 +370,7 @@ object ValidatorsBook {
 
   case class UnbondingQueueItem(validator: ValidatorId, amount: Ether, requestTime: Gas, triggeringTime: Gas)
 
-  case class ActiveRewardsPaymentQueueItem(ptime: Gas, block: BlockId, validator: ValidatorId)
+  case class ActiveRewardsPaymentQueueItem(ptime: Gas, block: AbstractBlock.PseudoId, validator: ValidatorId)
 
   sealed abstract class BondingQueueAppendResult
 

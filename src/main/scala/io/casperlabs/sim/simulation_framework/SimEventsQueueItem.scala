@@ -2,46 +2,42 @@ package io.casperlabs.sim.simulation_framework
 
 /**
   * Base class of messages that can be queued in the main events queue.
-  *
-  * @tparam MsgPayload
-  * @tparam ExtEventPayload
-  * @tparam PrivatePayload
   */
-sealed trait SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload] {
+sealed trait SimEventsQueueItem extends Ordered[SimEventsQueueItem] {
   val id: Long
-  val scheduledTime: Timepoint
+  val scheduledDeliveryTime: Timepoint
+
+  override def compare(that: SimEventsQueueItem): Int = scheduledDeliveryTime compare that.scheduledDeliveryTime
 }
 
 object SimEventsQueueItem {
 
-  case class AgentToAgentMsg[MsgPayload,ExtEventPayload,PrivatePayload](
-                id: Long,
-                source: AgentId,
-                destination: AgentId,
-                sentTime: Timepoint,
-                scheduledTime: Timepoint,
-                payload: MsgPayload) extends SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]
+  case class AgentToAgentMsg(
+                                   id: Long,
+                                   source: AgentRef,
+                                   destination: AgentRef,
+                                   sentTime: Timepoint,
+                                   scheduledDeliveryTime: Timepoint,
+                                   payload: Any) extends SimEventsQueueItem
 
-  case class ExternalEvent[MsgPayload,ExtEventPayload,PrivatePayload](
-                id: Long,
-                affectedAgent: AgentId,
-                scheduledTime: Timepoint,
-                payload: ExtEventPayload) extends SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]
+  case class ExternalEvent(
+                                 id: Long,
+                                 affectedAgent: AgentRef,
+                                 scheduledDeliveryTime: Timepoint,
+                                 payload: Any) extends SimEventsQueueItem
 
-  case class NewAgentCreation[MsgPayload,ExtEventPayload,PrivatePayload](
-                id: Long,
-                agentInstance: Agent[MsgPayload,ExtEventPayload,PrivatePayload],
-                scheduledTime: Timepoint) extends SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]
+  case class NewAgentCreation[R](
+                                  id: Long,
+                                  agentInstance: Agent[R],
+                                  scheduledDeliveryTime: Timepoint) extends SimEventsQueueItem
 
-  case class PrivateEvent[MsgPayload,ExtEventPayload,PrivatePayload](
-                id: Long,
-                affectedAgent: AgentId,
-                scheduledTime: Timepoint,
-                payload: PrivatePayload) extends SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]
+  case class PrivateEvent(
+                                id: Long,
+                                affectedAgent: AgentRef,
+                                scheduledDeliveryTime: Timepoint,
+                                payload: Any) extends SimEventsQueueItem
+
 }
 
-class QueueItemsOrdering[MsgPayload,ExtEventPayload,PrivatePayload] extends Ordering[SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]] {
-  override def compare(x: SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload], y: SimEventsQueueItem[MsgPayload,ExtEventPayload,PrivatePayload]): Int = x.scheduledTime compare y.scheduledTime
-}
 
 
